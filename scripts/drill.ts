@@ -36,7 +36,7 @@ function guard(): URL {
     process.exit(2);
   }
   if (!process.argv.includes("--yes")) {
-    console.error(`This sends ~40 deliberately bad requests to ${url.origin}. Re-run with --yes to proceed.`);
+    console.error(`This sends ~16 deliberately bad requests to ${url.origin}. Re-run with --yes to proceed.`);
     process.exit(2);
   }
   return url;

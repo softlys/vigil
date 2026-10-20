@@ -98,6 +98,17 @@ export async function ingestEvents(sql: Sql, source: EventSource, events: Securi
       let stored = 0;
       for (const e of list) {
         if (e.sequence <= lastSeq) {
+          // Re-delivery is normal; a different event at an already stored sequence means the
+          // source's history was rewritten after VIGIL read it.
+          const stored = (await q.query<{ hash: string }>("select hash from events where source = $1 and organization_id = $2 and sequence = $3", [source, orgId, e.sequence]))[0];
+          if (stored && stored.hash !== e.hash) {
+            const detail = `Conflicting event at sequence ${e.sequence}: the source now serves a different event than the one VIGIL stored. History was rewritten.`;
+            const already = await q.query("select 1 from integrity_findings where source = $1 and organization_id = $2 and kind = 'chain_break' and sequence = $3 and detail like 'Conflicting%' limit 1", [source, orgId, e.sequence]);
+            if (already.length === 0) {
+              result.findings.push({ kind: "chain_break", detail });
+              await finding(q, source, orgId, "chain_break", detail, e);
+            }
+          }
           result.duplicates += 1;
           continue;
         }

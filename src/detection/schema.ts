@@ -137,6 +137,16 @@ export const ruleSchema = z.discriminatedUnion("type", [
 export type Rule = z.infer<typeof ruleSchema>;
 export type RuleType = Rule["type"];
 
+const KEY_ORDER = ["id", "title", "description", "type", "severity", "mitre", "query", "group_by", "distinct", "window", "count", "by", "steps", "key", "value", "kinds", "outside_hours", "baseline", "entity", "dedup_window", "false_positives", "tuning"];
+
+/** Pretty JSON with a stable, readable key order (the database does not keep the original order). */
+export function formatRule(rule: Rule): string {
+  const ordered = Object.fromEntries(
+    Object.entries(rule).sort(([a], [b]) => (KEY_ORDER.indexOf(a) === -1 ? 99 : KEY_ORDER.indexOf(a)) - (KEY_ORDER.indexOf(b) === -1 ? 99 : KEY_ORDER.indexOf(b))),
+  );
+  return JSON.stringify(ordered, null, 2);
+}
+
 export function validateRule(input: unknown): { ok: true; rule: Rule } | { ok: false; issues: Array<{ path: string; message: string }> } {
   const parsed = ruleSchema.safeParse(input);
   if (parsed.success) {

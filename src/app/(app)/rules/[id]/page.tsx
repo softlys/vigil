@@ -2,6 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageTitle, Panel, SeverityBadge } from "@/components/vigil/bits";
+import { formatRule } from "@/detection/schema";
 import { formatDate } from "@/lib/format";
 import { getRule, ruleVersions } from "@/lib/rules-store";
 import { db } from "@/server/db";
@@ -37,7 +38,7 @@ export default async function RulePage({ params }: PageProps<"/rules/[id]">) {
       />
       <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <div className="space-y-4 xl:col-span-2">
-          <RuleEditor id={r.id} initial={JSON.stringify(r, null, 2)} canEdit={user.role === "admin"} />
+          <RuleEditor id={r.id} initial={formatRule(r)} canEdit={user.role === "admin"} />
         </div>
         <div className="space-y-4">
           <Panel title="What it detects">

@@ -49,6 +49,20 @@ describe("hash chain verification on ingest", () => {
     expect(again).toMatchObject({ stored: 0, duplicates: events.length });
   });
 
+  it("detects history rewritten after VIGIL read it (a different event at a stored sequence)", async () => {
+    const events = chain(30);
+    await ingestEvents(sql, "simulator", events);
+    // NEXORA later serves the same first 6 events, but event 6 was edited and re-hashed in place.
+    const edited = { ...events[5]!, metadata: { ...events[5]!.metadata, rewritten: true } };
+    const { hash: _h, prev_hash: _p, ...body } = edited;
+    void _h;
+    const rewritten = [...events.slice(0, 5), { ...edited, hash: hashEvent(_p, body) }];
+    const r = await ingestEvents(sql, "simulator", rewritten);
+    expect(r.stored).toBe(0);
+    expect(r.findings.map((f) => f.detail)).toEqual([expect.stringContaining("Conflicting event at sequence 6")]);
+    expect((await ingestEvents(sql, "simulator", rewritten)).findings).toEqual([]); // recorded once
+  });
+
   it("detects a modified event (hash mismatch)", async () => {
     const events = chain(30);
     const i = 5;
