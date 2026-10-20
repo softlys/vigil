@@ -1,0 +1,37 @@
+{
+  "id": "VGL-012",
+  "title": "Workflow changed, then data sent to a new webhook domain",
+  "type": "sequence",
+  "severity": "high",
+  "description": "An automation workflow was updated and shortly after an outbound webhook went to a domain NEXORA never sent to before: automation may have been changed to exfiltrate data.",
+  "mitre": [
+    {
+      "id": "T1567.004",
+      "name": "Exfiltration Over Web Service: Exfiltration Over Webhook",
+      "tactic": "Exfiltration"
+    }
+  ],
+  "by": "organization_id",
+  "window": "2h",
+  "steps": [
+    {
+      "name": "workflow updated",
+      "query": {
+        "action": "workflow.updated"
+      }
+    },
+    {
+      "name": "webhook to a new domain",
+      "query": {
+        "action": "integration.webhook_sent"
+      },
+      "first_seen": "metadata.domain"
+    }
+  ],
+  "entity": "metadata.domain",
+  "dedup_window": "24h",
+  "false_positives": [
+    "A legitimate new integration set up right after editing a workflow."
+  ],
+  "tuning": "Review the domain; keep a list of approved integration domains and add them as a not_in condition."
+}

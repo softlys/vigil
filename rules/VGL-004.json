@@ -1,0 +1,28 @@
+{
+  "id": "VGL-004",
+  "title": "IDOR probing: many denied record ids",
+  "type": "threshold",
+  "severity": "high",
+  "description": "One actor requested many different records outside their scope. NEXORA answers 404 and records authz.denied (not_visible): the actor is enumerating ids.",
+  "mitre": [
+    {
+      "id": "T1213",
+      "name": "Data from Information Repositories",
+      "tactic": "Collection"
+    }
+  ],
+  "query": {
+    "action": "authz.denied",
+    "metadata.reason": "not_visible"
+  },
+  "group_by": "actor.id",
+  "distinct": "target.id",
+  "window": "10m",
+  "count": 10,
+  "entity": "actor.id",
+  "dedup_window": "1h",
+  "false_positives": [
+    "Stale bookmarks or links shared between teams after records were reassigned (usually few ids)."
+  ],
+  "tuning": "Raise count if users routinely follow old links; real enumeration produces dozens of distinct ids."
+}

@@ -1,0 +1,23 @@
+{
+  "id": "VGL-008",
+  "title": "Revoked API key used",
+  "type": "single",
+  "severity": "high",
+  "description": "A revoked key was presented to the API. Either an integration was not updated, or someone holds a copy of a key that was revoked for a reason.",
+  "mitre": [
+    {
+      "id": "T1550.001",
+      "name": "Use Alternate Authentication Material: Application Access Token",
+      "tactic": "Lateral Movement"
+    }
+  ],
+  "query": {
+    "action": "api_key.used_after_revoke"
+  },
+  "entity": "target.id",
+  "dedup_window": "6h",
+  "false_positives": [
+    "A forgotten integration still configured with the old key after a planned rotation."
+  ],
+  "tuning": "If the key was revoked during an incident, escalate any use immediately."
+}

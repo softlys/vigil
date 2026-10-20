@@ -1,0 +1,42 @@
+{
+  "id": "VGL-003",
+  "title": "Successful sign-in after repeated failures",
+  "type": "sequence",
+  "severity": "critical",
+  "description": "An account had a burst of failed sign-ins and then signed in successfully: the brute force may have worked.",
+  "mitre": [
+    {
+      "id": "T1110",
+      "name": "Brute Force",
+      "tactic": "Credential Access"
+    },
+    {
+      "id": "T1078",
+      "name": "Valid Accounts",
+      "tactic": "Initial Access"
+    }
+  ],
+  "by": "metadata.account_key",
+  "window": "30m",
+  "steps": [
+    {
+      "name": "failed sign-ins",
+      "query": {
+        "action": "auth.login_failed"
+      },
+      "min_count": 5
+    },
+    {
+      "name": "successful sign-in",
+      "query": {
+        "action": "auth.login_succeeded"
+      }
+    }
+  ],
+  "entity": "metadata.account_key",
+  "dedup_window": "2h",
+  "false_positives": [
+    "The real user remembered the password after several attempts. Check the source IP against the failures."
+  ],
+  "tuning": "Pair with VGL-001; if the success comes from a different IP than the failures, treat it as critical."
+}

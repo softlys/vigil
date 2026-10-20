@@ -1,0 +1,43 @@
+{
+  "id": "VGL-006",
+  "title": "Admin grant right after the actor was denied access",
+  "type": "sequence",
+  "severity": "critical",
+  "description": "The same actor hit authorization denials and then changed a role to admin: an attempt to escalate privileges after being blocked.",
+  "mitre": [
+    {
+      "id": "T1098",
+      "name": "Account Manipulation",
+      "tactic": "Privilege Escalation"
+    },
+    {
+      "id": "T1078",
+      "name": "Valid Accounts",
+      "tactic": "Initial Access"
+    }
+  ],
+  "by": "actor.id",
+  "window": "30m",
+  "steps": [
+    {
+      "name": "access denied",
+      "query": {
+        "action": "authz.denied"
+      },
+      "min_count": 2
+    },
+    {
+      "name": "role changed to admin",
+      "query": {
+        "action": "role.changed",
+        "metadata.to_role": "admin"
+      }
+    }
+  ],
+  "entity": "actor.id",
+  "dedup_window": "24h",
+  "false_positives": [
+    "An admin who tried an action, saw it was not allowed for the user, and granted the role deliberately."
+  ],
+  "tuning": "Require min_count 3 on the first step if admins often test access before granting it."
+}

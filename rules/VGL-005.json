@@ -1,0 +1,30 @@
+{
+  "id": "VGL-005",
+  "title": "Role changed to admin outside working hours",
+  "type": "single",
+  "severity": "high",
+  "description": "A user was promoted to admin at night or on a weekend, when nobody is expected to manage access.",
+  "mitre": [
+    {
+      "id": "T1098",
+      "name": "Account Manipulation",
+      "tactic": "Privilege Escalation"
+    }
+  ],
+  "query": {
+    "action": "role.changed",
+    "metadata.to_role": "admin"
+  },
+  "outside_hours": {
+    "start_hour": 7,
+    "end_hour": 20,
+    "weekdays_only": true,
+    "utc_offset_minutes": 0
+  },
+  "entity": "target.id",
+  "dedup_window": "24h",
+  "false_positives": [
+    "Planned maintenance or an on-call admin onboarding a colleague in another time zone."
+  ],
+  "tuning": "Set working hours (utc_offset_minutes) to the organization's main time zone."
+}

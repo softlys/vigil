@@ -1,0 +1,28 @@
+{
+  "id": "VGL-013",
+  "title": "SSRF attempt blocked",
+  "type": "single",
+  "severity": "high",
+  "description": "Someone configured or triggered a webhook towards a private, loopback or cloud metadata address. NEXORA blocked it; the attempt itself is suspicious.",
+  "mitre": [
+    {
+      "id": "T1190",
+      "name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access"
+    },
+    {
+      "id": "T1552.005",
+      "name": "Unsecured Credentials: Cloud Instance Metadata API",
+      "tactic": "Credential Access"
+    }
+  ],
+  "query": {
+    "action": "security.ssrf_blocked"
+  },
+  "entity": "metadata.host",
+  "dedup_window": "6h",
+  "false_positives": [
+    "A developer pointing a webhook at a local test server (only possible outside production)."
+  ],
+  "tuning": "Any hit on 169.254.169.254 or metadata hostnames should be investigated."
+}

@@ -1,0 +1,26 @@
+{
+  "id": "VGL-001",
+  "title": "Brute force against one account",
+  "type": "threshold",
+  "severity": "high",
+  "description": "Many failed sign-ins for the same account in a short window: someone is guessing its password.",
+  "mitre": [
+    {
+      "id": "T1110.001",
+      "name": "Brute Force: Password Guessing",
+      "tactic": "Credential Access"
+    }
+  ],
+  "query": {
+    "action": "auth.login_failed"
+  },
+  "group_by": "metadata.account_key",
+  "window": "10m",
+  "count": 8,
+  "entity": "metadata.account_key",
+  "dedup_window": "1h",
+  "false_positives": [
+    "A user with a saved, outdated password in a script or password manager retrying in a loop."
+  ],
+  "tuning": "Raise count for organizations with many shared kiosks; lower the window to 5m for stricter detection."
+}

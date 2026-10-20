@@ -1,0 +1,25 @@
+{
+  "id": "VGL-010",
+  "title": "API key used from a new IP address",
+  "type": "new_value",
+  "severity": "medium",
+  "description": "Events attributed to an API key came from a source IP never seen for that key before. The first IP per key is learned silently.",
+  "mitre": [
+    {
+      "id": "T1550.001",
+      "name": "Use Alternate Authentication Material: Application Access Token",
+      "tactic": "Lateral Movement"
+    }
+  ],
+  "query": {
+    "actor.type": "api_key"
+  },
+  "key": "actor.id",
+  "value": "source.ip",
+  "entity": "actor.id",
+  "dedup_window": "24h",
+  "false_positives": [
+    "Integrations running on serverless platforms with changing egress IPs (Make, n8n cloud)."
+  ],
+  "tuning": "NEXORA records API key activity mainly on failures; this rule sees only those events. Disable for keys used from dynamic IP pools."
+}

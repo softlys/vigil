@@ -1,0 +1,26 @@
+{
+  "id": "VGL-007",
+  "title": "API authentication failures burst",
+  "type": "threshold",
+  "severity": "medium",
+  "description": "Many wrong secrets presented for the same API key prefix: a leaked prefix or a key being guessed.",
+  "mitre": [
+    {
+      "id": "T1110",
+      "name": "Brute Force",
+      "tactic": "Credential Access"
+    }
+  ],
+  "query": {
+    "action": "api.auth_failed"
+  },
+  "group_by": "metadata.prefix",
+  "window": "10m",
+  "count": 5,
+  "entity": "metadata.prefix",
+  "dedup_window": "1h",
+  "false_positives": [
+    "An integration deployed with a truncated or rotated key retrying on a schedule."
+  ],
+  "tuning": "Check the source IPs; a single integration host retrying is configuration, many IPs is an attack."
+}

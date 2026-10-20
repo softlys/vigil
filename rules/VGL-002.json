@@ -1,0 +1,27 @@
+{
+  "id": "VGL-002",
+  "title": "Password spraying from one IP",
+  "type": "threshold",
+  "severity": "high",
+  "description": "Failed sign-ins for many different accounts from one source IP: one or two common passwords tried against many users.",
+  "mitre": [
+    {
+      "id": "T1110.003",
+      "name": "Brute Force: Password Spraying",
+      "tactic": "Credential Access"
+    }
+  ],
+  "query": {
+    "action": "auth.login_failed"
+  },
+  "group_by": "source.ip",
+  "distinct": "metadata.account_key",
+  "window": "30m",
+  "count": 6,
+  "entity": "source.ip",
+  "dedup_window": "2h",
+  "false_positives": [
+    "A corporate NAT or VPN egress IP where many employees mistype passwords on Monday morning."
+  ],
+  "tuning": "Exclude known office egress IPs with a not_in condition on source.ip, or raise the distinct count."
+}

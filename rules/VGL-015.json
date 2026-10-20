@@ -1,0 +1,31 @@
+{
+  "id": "VGL-015",
+  "title": "Security log integrity violation",
+  "type": "integrity",
+  "severity": "critical",
+  "description": "The hash chain is broken, sequence numbers are missing, the heartbeat stopped for more than 15 minutes, or events no longer match the schema: security events may have been deleted, modified or suppressed.",
+  "mitre": [
+    {
+      "id": "T1070",
+      "name": "Indicator Removal",
+      "tactic": "Stealth"
+    },
+    {
+      "id": "T1685.002",
+      "name": "Disable or Modify Tools: Disable or Modify Cloud Log",
+      "tactic": "Defense Impairment"
+    }
+  ],
+  "kinds": [
+    "chain_break",
+    "sequence_gap",
+    "heartbeat_gap",
+    "schema_mismatch"
+  ],
+  "entity": "organization_id",
+  "dedup_window": "1h",
+  "false_positives": [
+    "NEXORA restored from a backup (sequence reset), or the NEXORA scheduler/cron is not configured (heartbeat gap)."
+  ],
+  "tuning": "A heartbeat gap without other findings usually means the NEXORA cron stopped; a chain break never has a benign cause."
+}

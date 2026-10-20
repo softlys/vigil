@@ -1,0 +1,26 @@
+{
+  "id": "VGL-009",
+  "title": "API scope denials burst",
+  "type": "threshold",
+  "severity": "medium",
+  "description": "One key repeatedly called endpoints outside its scopes: someone is probing what a stolen key can do.",
+  "mitre": [
+    {
+      "id": "T1550.001",
+      "name": "Use Alternate Authentication Material: Application Access Token",
+      "tactic": "Lateral Movement"
+    }
+  ],
+  "query": {
+    "action": "api.scope_denied"
+  },
+  "group_by": "target.id",
+  "window": "15m",
+  "count": 5,
+  "entity": "target.id",
+  "dedup_window": "1h",
+  "false_positives": [
+    "A new integration built against the wrong scopes during setup."
+  ],
+  "tuning": "Lower the count for SIEM keys, which should never be denied."
+}

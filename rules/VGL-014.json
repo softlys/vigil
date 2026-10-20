@@ -1,0 +1,28 @@
+{
+  "id": "VGL-014",
+  "title": "Forged cron or webhook request",
+  "type": "single",
+  "severity": "high",
+  "description": "The scheduler endpoint was called without the right secret, or a callback carried an invalid integration signature: someone is forging internal requests.",
+  "mitre": [
+    {
+      "id": "T1190",
+      "name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access"
+    }
+  ],
+  "query": {
+    "action": {
+      "in": [
+        "cron.unauthorized",
+        "webhook.signature_invalid"
+      ]
+    }
+  },
+  "entity": "source.ip",
+  "dedup_window": "6h",
+  "false_positives": [
+    "A cron job or integration still using a rotated secret."
+  ],
+  "tuning": "Correlate with deployments; outside a deployment window any hit is suspicious."
+}

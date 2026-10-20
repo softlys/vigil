@@ -1,0 +1,31 @@
+{
+  "id": "VGL-011",
+  "title": "Bulk read far above the actor's baseline",
+  "type": "single",
+  "severity": "high",
+  "description": "A user read many more records in a short window than they normally do: a possible data exfiltration before leaving or with stolen credentials.",
+  "mitre": [
+    {
+      "id": "T1213",
+      "name": "Data from Information Repositories",
+      "tactic": "Collection"
+    }
+  ],
+  "query": {
+    "action": "data.bulk_read"
+  },
+  "baseline": {
+    "field": "metadata.records",
+    "by": "actor.id",
+    "lookback": "7d",
+    "factor": 3,
+    "min_samples": 3,
+    "min_value": 500
+  },
+  "entity": "actor.id",
+  "dedup_window": "6h",
+  "false_positives": [
+    "Quarter-end reporting or a data migration by an admin."
+  ],
+  "tuning": "Raise factor for roles that export regularly; min_samples controls how long a new user is learned before alerting."
+}

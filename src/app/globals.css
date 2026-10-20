@@ -1,0 +1,164 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "../styles/tokens.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Theme bridge: Tailwind utilities and shadcn/ui variables both resolve to the
+ * --nx-* custom properties generated from tokens/tokens.json.
+ */
+@theme inline {
+  --font-sans: var(--nx-font-family-sans);
+  --font-mono: var(--nx-font-family-mono);
+  --font-heading: var(--nx-font-family-sans);
+
+  --text-xs: var(--nx-font-size-xs);
+  --text-xs--line-height: var(--nx-font-line-height-xs);
+  --text-sm: var(--nx-font-size-sm);
+  --text-sm--line-height: var(--nx-font-line-height-sm);
+  --text-base: var(--nx-font-size-base);
+  --text-base--line-height: var(--nx-font-line-height-base);
+  --text-md: var(--nx-font-size-md);
+  --text-md--line-height: var(--nx-font-line-height-md);
+  --text-lg: var(--nx-font-size-lg);
+  --text-lg--line-height: var(--nx-font-line-height-lg);
+  --text-xl: var(--nx-font-size-xl);
+  --text-xl--line-height: var(--nx-font-line-height-xl);
+  --text-2xl: var(--nx-font-size-2xl);
+  --text-2xl--line-height: var(--nx-font-line-height-2xl);
+  --text-3xl: var(--nx-font-size-3xl);
+  --text-3xl--line-height: var(--nx-font-line-height-3xl);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* NEXORA semantic colors */
+  --color-surface: var(--nx-surface);
+  --color-surface-subtle: var(--nx-surface-subtle);
+  --color-surface-muted: var(--nx-surface-muted);
+  --color-border-strong: var(--nx-border-strong);
+  --color-text-muted: var(--nx-text-muted);
+  --color-text-subtle: var(--nx-text-subtle);
+  --color-brand: var(--nx-accent);
+  --color-brand-hover: var(--nx-accent-hover);
+  --color-brand-foreground: var(--nx-accent-foreground);
+  --color-brand-subtle: var(--nx-accent-subtle);
+  --color-brand-subtle-foreground: var(--nx-accent-subtle-foreground);
+  --color-success: var(--nx-success-fg);
+  --color-success-bg: var(--nx-success-bg);
+  --color-success-border: var(--nx-success-border);
+  --color-warning: var(--nx-warning-fg);
+  --color-warning-bg: var(--nx-warning-bg);
+  --color-warning-border: var(--nx-warning-border);
+  --color-danger: var(--nx-danger-fg);
+  --color-danger-bg: var(--nx-danger-bg);
+  --color-danger-border: var(--nx-danger-border);
+  --color-info: var(--nx-info-fg);
+  --color-info-bg: var(--nx-info-bg);
+  --color-info-border: var(--nx-info-border);
+
+  --radius-sm: var(--nx-radius-sm);
+  --radius-md: var(--nx-radius-md);
+  --radius-lg: var(--nx-radius-lg);
+  --radius-xl: var(--nx-radius-xl);
+  --radius-2xl: var(--nx-radius-xl);
+  --radius-3xl: var(--nx-radius-xl);
+  --radius-4xl: var(--nx-radius-xl);
+
+  --shadow-xs: var(--nx-shadow-xs);
+  --shadow-sm: var(--nx-shadow-sm);
+  --shadow-md: var(--nx-shadow-md);
+  --shadow-lg: var(--nx-shadow-lg);
+}
+
+:root {
+  --radius: var(--nx-radius-lg);
+  --background: var(--nx-background);
+  --foreground: var(--nx-foreground);
+  --card: var(--nx-surface);
+  --card-foreground: var(--nx-foreground);
+  --popover: var(--nx-surface);
+  --popover-foreground: var(--nx-foreground);
+  --primary: var(--nx-accent);
+  --primary-foreground: var(--nx-accent-foreground);
+  --secondary: var(--nx-surface-muted);
+  --secondary-foreground: var(--nx-foreground);
+  --muted: var(--nx-surface-muted);
+  --muted-foreground: var(--nx-text-muted);
+  --accent: var(--nx-surface-muted);
+  --accent-foreground: var(--nx-foreground);
+  --destructive: var(--nx-danger-solid);
+  --border: var(--nx-border);
+  --input: var(--nx-border-strong);
+  --ring: var(--nx-ring);
+  --chart-1: var(--nx-chart-1);
+  --chart-2: var(--nx-chart-2);
+  --chart-3: var(--nx-chart-3);
+  --chart-4: var(--nx-chart-4);
+  --chart-5: var(--nx-chart-5);
+  --sidebar: var(--nx-sidebar);
+  --sidebar-foreground: var(--nx-foreground);
+  --sidebar-primary: var(--nx-accent);
+  --sidebar-primary-foreground: var(--nx-accent-foreground);
+  --sidebar-accent: var(--nx-surface-muted);
+  --sidebar-accent-foreground: var(--nx-foreground);
+  --sidebar-border: var(--nx-border);
+  --sidebar-ring: var(--nx-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    font-feature-settings: "cv11", "ss01";
+  }
+  body {
+    @apply bg-background text-foreground text-base;
+  }
+  ::selection {
+    background: var(--nx-accent-subtle);
+    color: var(--nx-accent-subtle-foreground);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
