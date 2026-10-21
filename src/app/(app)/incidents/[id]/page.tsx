@@ -180,13 +180,15 @@ export default async function IncidentPage({ params }: PageProps<"/incidents/[id
                         {r.decided_by_name ? ` · ${r.status} by ${r.decided_by_name}` : ""}
                       </p>
                       {r.reason && <p className="mt-1 text-xs">Reason: {r.reason}</p>}
-                      {r.status === "proposed" && user.role === "admin" && <ResponseDecision actionId={r.id} incidentId={incident.id} label={`${PLAYBOOKS[r.kind].label} ${r.target_label ?? r.target_id}`} simulated={r.simulated} />}
+                      {r.status === "proposed" && user.role === "admin" && (
+                        <ResponseDecision actionId={r.id} incidentId={incident.id} kind={r.kind} label={`${PLAYBOOKS[r.kind].label} ${r.target_label ?? r.target_id}`} simulated={r.simulated} ownProposal={r.proposed_by === user.id} />
+                      )}
                       {r.status === "proposed" && user.role !== "admin" && <p className="mt-1 text-xs text-warning">Waiting for an admin to approve or reject.</p>}
                     </li>
                   ))}
                 </ul>
               )}
-              <ProposeResponse incidentId={incident.id} users={candidates.users} keys={candidates.keys} />
+              <ProposeResponse incidentId={incident.id} users={candidates.users} keys={candidates.keys} pending={responses.filter((r) => r.status === "proposed").map((r) => `${r.kind}:${r.target_id}`)} />
             </div>
           </Panel>
         </div>

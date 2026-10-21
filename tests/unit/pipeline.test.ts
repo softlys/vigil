@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runDetection, runIntegrityAlerts } from "@/detection/live";
+import { runDetection, runIntegrityAlerts, toNorm, type EventRow } from "@/detection/live";
+import { backtest } from "@/detection/memory";
+import { durationMs } from "@/detection/schema";
 import type { SecurityEvent } from "@/domain/event-schema";
 import { raiseAlert } from "@/lib/alerts";
 import type { Sql } from "@/lib/db";
@@ -128,11 +130,12 @@ describe("response actions", () => {
     return a.alert.incident_id!;
   }
   const admin = { id: "00000000-0000-4000-8000-000000000001", email: "admin@vigil.example" };
+  const analyst = { id: "00000000-0000-4000-8000-000000000002", email: "analyst@vigil.example" };
   const KEY = "0000a000-0000-4000-8000-00000000a202";
 
   it("simulated incidents record the action without calling NEXORA", async () => {
     const id = await incident(true);
-    const actionId = await proposeResponse(sql, { incidentId: id, kind: "revoke_api_key", targetId: KEY, targetLabel: null, actor: admin });
+    const actionId = await proposeResponse(sql, { incidentId: id, kind: "revoke_api_key", targetId: KEY, targetLabel: null, actor: analyst });
     let called = false;
     const r = await approveResponse(sql, { actionId, reason: "Key abused from 203.0.113.45", admin, executor: async () => ((called = true), { status: 200, body: "" }) });
     expect(r).toEqual({ status: "executed", simulated: true });
@@ -144,7 +147,7 @@ describe("response actions", () => {
 
   it("real incidents call the security-actions API with the respond key and log the result", async () => {
     const id = await incident(false);
-    const actionId = await proposeResponse(sql, { incidentId: id, kind: "disable_user", targetId: KEY, targetLabel: "Daniel", actor: admin });
+    const actionId = await proposeResponse(sql, { incidentId: id, kind: "disable_user", targetId: KEY, targetLabel: "Daniel", actor: analyst });
     const seen: Array<{ url: string; key: string; body: Record<string, unknown> }> = [];
     const cfg = getConfig({ NEXORA_URL: "https://nexora.example", NEXORA_SECURITY_API_KEY: "read", NEXORA_RESPONSE_API_KEY: "respond" } as unknown as NodeJS.ProcessEnv);
     const r = await approveResponse(sql, { actionId, reason: "Confirmed account takeover", admin, config: cfg, executor: async (x) => (seen.push(x), { status: 200, body: '{"data":{"changed":true}}' }) });
@@ -156,7 +159,7 @@ describe("response actions", () => {
 
   it("requires a reason, refuses double decisions and records failures", async () => {
     const id = await incident(false);
-    const actionId = await proposeResponse(sql, { incidentId: id, kind: "revoke_api_key", targetId: KEY, targetLabel: null, actor: admin });
+    const actionId = await proposeResponse(sql, { incidentId: id, kind: "revoke_api_key", targetId: KEY, targetLabel: null, actor: analyst });
     await expect(approveResponse(sql, { actionId, reason: "ok", admin })).rejects.toThrow(ResponseError);
     await expect(proposeResponse(sql, { incidentId: id, kind: "revoke_api_key", targetId: KEY, targetLabel: null, actor: admin })).rejects.toThrow(/already waiting/);
     await expect(proposeResponse(sql, { incidentId: id, kind: "revoke_api_key", targetId: "not-a-uuid", targetLabel: null, actor: admin })).rejects.toThrow(/UUID/);
@@ -164,6 +167,40 @@ describe("response actions", () => {
     const r = await approveResponse(sql, { actionId, reason: "Rotate after leak", admin, config: noKey });
     expect(r.status).toBe("failed");
     await expect(rejectResponse(sql, { actionId, reason: "too late now", admin })).rejects.toThrow(/already failed/);
+  });
+});
+
+describe("backtest matches live detection", () => {
+  it("raises the same alerts, at the same times, with the same hit counts", async () => {
+    // Several scenarios on top of the baseline, so rules see both noise and attacks.
+    const r = rng(5);
+    await ingestEvents(sql, "simulator", seal(sorted([...bootstrap(new Date(T0.getTime() - 3 * 86_400_000)), ...exportHistory(T0, 4)]), null));
+    for (const [n, key] of (["brute_force", "password_spraying", "success_after_failures", "data_exfiltration", "api_key_abuse", "privilege_escalation"] as const).entries()) {
+      const tail = (await sql.query<{ last_sequence: number; last_hash: string }>("select last_sequence, last_hash from connector_state"))[0]!;
+      await ingestEvents(sql, "simulator", seal(scenario(key, new Date(T0.getTime() + n * 3_600_000), r), { sequence: tail.last_sequence, hash: tail.last_hash }));
+      await runDetection(sql);
+    }
+    const live = await sql.query<{ rule_id: string; first_seen_at: string; count: number }>("select rule_id, first_seen_at, count from alerts order by rule_id, first_seen_at");
+    expect(live.length).toBeGreaterThan(0);
+    const events = (await sql.query<EventRow>("select * from events order by id")).map(toNorm);
+    const replayed: Array<{ rule_id: string; first_seen_at: string; count: number }> = [];
+    for (const rule of Object.values(RULES)) {
+      if (rule.type === "integrity") continue;
+      for (const h of await backtest(rule, events, durationMs(rule.dedup_window))) replayed.push({ rule_id: rule.id, first_seen_at: new Date(h.at).toISOString(), count: h.count });
+    }
+    const norm = (rows: typeof live) => rows.map((a) => `${a.rule_id} ${new Date(a.first_seen_at).toISOString()} ×${a.count}`).sort();
+    expect(norm(replayed)).toEqual(norm(live));
+  });
+});
+
+describe("four eyes", () => {
+  it("the admin who proposed an action cannot approve it", async () => {
+    const a = await raiseAlert(sql, { rule: RULES["VGL-008"]!, ruleVersion: 1, key: "k", entity: { field: "target.id", value: "k" }, eventIds: [], at: T0.toISOString(), summary: "s", simulated: true, scope: "simulator:o" });
+    const admin = { id: "00000000-0000-4000-8000-000000000001", email: "admin@vigil.example" };
+    const actionId = await proposeResponse(sql, { incidentId: a.alert.incident_id!, kind: "revoke_api_key", targetId: "0000a000-0000-4000-8000-00000000a202", targetLabel: null, actor: admin });
+    await expect(approveResponse(sql, { actionId, reason: "Approving my own idea", admin })).rejects.toThrow(/another admin/);
+    const other = { id: "00000000-0000-4000-8000-000000000003", email: "second@vigil.example" };
+    expect((await approveResponse(sql, { actionId, reason: "Reviewed and confirmed", admin: other })).status).toBe("executed");
   });
 });
 

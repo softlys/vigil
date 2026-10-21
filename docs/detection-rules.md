@@ -1,6 +1,6 @@
 # Detection rules
 
-Rules are JSON documents validated by `src/detection/schema.ts`. Built-in rules live in `rules/*.json` and are loaded into the database on first start. Admins can edit, enable, disable and backtest rules in the UI; every save creates a new version (`rule_versions`) and an audit-log entry.
+Rules are JSON documents validated by `src/detection/schema.ts`. Built-in rules live in `rules/*.json` and are loaded into the database on first start. Admins can edit, enable, disable and backtest rules in the UI; every save creates a new version (`rule_versions`) and an audit-log entry. Turning a rule off needs a confirmation and a reason; integrity rules (VGL-015) cannot be turned off. Any earlier version can be compared with the current one and restored (restoring saves it as a new version). Backtests replay stored events in the same order and with the same dedup as live detection, and a unit test keeps the two in step.
 
 ## Format
 

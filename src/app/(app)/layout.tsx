@@ -1,4 +1,5 @@
-import { LogOut, ShieldCheck } from "lucide-react";
+import { KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { Nav } from "@/components/shell/nav";
 import { Button } from "@/components/ui/button";
 import { connectorConfigured, getConfig } from "@/lib/config";
@@ -24,19 +25,27 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </div>
         </div>
         <div className="px-2 pb-2 md:flex-1">
-          <Nav openIncidents={openIncidents ?? 0} />
+          <Nav openIncidents={openIncidents ?? 0} isAdmin={user.role === "admin"} />
         </div>
         <div className="hidden border-t border-border px-4 py-3 text-xs md:block">
           <p className="truncate font-medium">{user.name}</p>
           <p className="truncate text-text-muted">
             {user.email} · {user.role}
           </p>
-          <form action={logoutAction} className="mt-2">
-            <Button type="submit" variant="ghost" size="sm" className="-ml-2">
-              <LogOut aria-hidden />
-              Sign out
+          <div className="mt-2 flex flex-col items-start">
+            <Button asChild variant="ghost" size="sm" className="-ml-2">
+              <Link href="/account/password">
+                <KeyRound aria-hidden />
+                Change password
+              </Link>
             </Button>
-          </form>
+            <form action={logoutAction}>
+              <Button type="submit" variant="ghost" size="sm" className="-ml-2">
+                <LogOut aria-hidden />
+                Sign out
+              </Button>
+            </form>
+          </div>
         </div>
       </aside>
       <div className="min-w-0 flex-1">
@@ -50,11 +59,16 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <span className="truncate text-xs text-text-muted">
             {user.email} · {user.role}
           </span>
-          <form action={logoutAction}>
-            <Button type="submit" variant="ghost" size="sm">
-              Sign out
+          <div className="flex items-center">
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/account/password">Password</Link>
             </Button>
-          </form>
+            <form action={logoutAction}>
+              <Button type="submit" variant="ghost" size="sm">
+                Sign out
+              </Button>
+            </form>
+          </div>
         </div>
         <main id="main" className="mx-auto max-w-[1400px] space-y-6 px-4 py-6 sm:px-6">
           {children}

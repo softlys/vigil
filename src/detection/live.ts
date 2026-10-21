@@ -28,6 +28,9 @@ export type EventRow = {
   metadata: Record<string, unknown>;
 };
 
+/** Timestamps are compared as ISO strings; some driver paths hand back Date objects, so normalize. */
+const iso = (v: unknown): string => (typeof v === "string" ? v : new Date(v as Date).toISOString());
+
 export function toNorm(r: EventRow): NormEvent {
   return {
     id: r.id,
@@ -35,7 +38,7 @@ export function toNorm(r: EventRow): NormEvent {
     simulated: r.simulated,
     organization_id: r.organization_id,
     sequence: r.sequence,
-    occurred_at: r.occurred_at,
+    occurred_at: iso(r.occurred_at),
     action: r.action,
     category: r.category,
     outcome: r.outcome,
@@ -162,7 +165,8 @@ export async function runIntegrityAlerts(sql: Sql, options: { rules?: StoredRule
         entity: { field: "organization_id", value: f.organization_id },
         eventIds: evidence,
         at: f.detected_at,
-        summary: `${f.kind.replace("_", " ")}: ${f.detail}`,
+        // The finding detail already names its kind ("Sequence gap: expected …").
+        summary: f.detail,
         simulated: f.source === "simulator",
         scope: `${f.source}:${f.organization_id}`,
       });

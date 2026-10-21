@@ -27,6 +27,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   destructive = false,
   onConfirm,
   children,
@@ -38,6 +39,8 @@ export function ConfirmDialog({
   title: string;
   description: ReactNode;
   confirmLabel?: string;
+  /** Label of the dismiss button; avoid "Cancel" when the action itself is a cancellation. */
+  cancelLabel?: string;
   destructive?: boolean;
   onConfirm: () => Promise<boolean | void> | boolean | void;
   children?: ReactNode;
@@ -60,7 +63,7 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         {children}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>{cancelLabel}</AlertDialogCancel>
           <Button
             variant={destructive ? "danger" : "default"}
             disabled={pending}

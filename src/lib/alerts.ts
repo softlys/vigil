@@ -125,7 +125,8 @@ export async function raiseAlert(sql: Sql, input: RaiseInput): Promise<RaiseResu
     await q.query("insert into incident_timeline (incident_id, at, kind, body, data) values ($1, $2, 'alert', $3, $4)", [
       incident.id,
       input.at,
-      `${input.rule.id} ${input.rule.title}: ${input.summary}`,
+      // Summaries already start with the rule title, so only the id is added.
+      `${input.rule.id}: ${input.summary}`,
       JSON.stringify({ alert_id: alert.id, rule_id: input.rule.id, severity: input.rule.severity }),
     ]);
     return { alert, created: true };

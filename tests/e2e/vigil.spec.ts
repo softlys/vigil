@@ -21,12 +21,14 @@ async function waitForIncidents(page: Page) {
 test.describe("VIGIL", () => {
   test("requires authentication everywhere and rejects wrong passwords", async ({ page, request }) => {
     await page.goto("/incidents");
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login\?next=%2Fincidents$/);
     await expect(page.getByTestId("demo-credentials")).toBeVisible();
     await page.getByLabel("Email").fill("admin@vigil.example");
     await page.getByLabel("Password").fill("wrong-password");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByText("Email or password is incorrect.")).toBeVisible();
+    // The email stays filled in after a failed attempt.
+    await expect(page.getByLabel("Email")).toHaveValue("admin@vigil.example");
     expect((await request.get("/api/health")).status()).toBe(200);
     const headers = (await request.get("/login")).headers();
     expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
@@ -96,10 +98,63 @@ test.describe("VIGIL", () => {
     await waitForIncidents(page);
     await page.goto("/settings");
     await page.getByTestId("run-ssrf_attempt").click();
-    await expect(page.getByText(/SSRF attempt: \d+ simulated events/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/SSRF attempt: \d+ simulated events?, \d+ new alerts?/)).toBeVisible({ timeout: 30_000 });
 
     await page.goto("/rules/VGL-002");
     await page.getByRole("button", { name: "Run backtest" }).click();
     await expect(page.getByTestId("backtest-result")).toContainText(/1 alert over \d+ evaluated events/);
+  });
+
+  test("QA regressions: return to the requested page, admin-only nav, 404, filters and paging", async ({ page }) => {
+    await page.goto("/rules/VGL-003");
+    await expect(page).toHaveURL(/\/login\?next=%2Frules%2FVGL-003$/);
+    await page.getByLabel("Email").fill("analyst@vigil.example");
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/rules\/VGL-003$/);
+    // Analysts do not see Settings in the navigation.
+    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" })).toHaveCount(0);
+
+    const missing = await page.goto("/no-such-page");
+    expect(missing!.status()).toBe(404);
+    await expect(page.getByRole("heading", { name: "This page does not exist" })).toBeVisible();
+
+    await page.goto("/alerts?severity=bogus");
+    await expect(page.getByTestId("ignored-filters")).toContainText("severity=bogus");
+    await page.goto("/audit?page=999");
+    await expect(page).not.toHaveURL(/page=999/);
+  });
+
+  test("admin: integrity rules stay on, turning a rule off needs a reason, new users must change their password", async ({ page }) => {
+    await login(page, "admin@vigil.example");
+    await page.goto("/rules");
+    await expect(page.getByRole("switch", { name: "VGL-015 is always on" })).toBeDisabled();
+    await page.getByRole("switch", { name: "Disable VGL-013" }).click();
+    const confirm = page.getByRole("alertdialog");
+    await expect(confirm).toContainText("Turn off VGL-013?");
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("switch", { name: "Disable VGL-013" })).toBeChecked();
+
+    const email = `qa.${Date.now().toString(36)}@vigil.example`;
+    await page.goto("/settings");
+    await page.getByLabel("Name").fill("QA Tester");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Initial password").fill("initial-password-1");
+    await page.getByRole("button", { name: "Create user" }).click();
+    await expect(page.getByText(email)).toBeVisible();
+
+    await page.context().clearCookies();
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill("initial-password-1");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/account\/password\?first=1$/);
+    await page.goto("/incidents");
+    await expect(page).toHaveURL(/\/account\/password/);
+    await page.getByLabel("Current password").fill("initial-password-1");
+    await page.getByLabel("New password", { exact: true }).fill("my-own-password-42");
+    await page.getByLabel("Repeat the new password").fill("my-own-password-42");
+    await page.getByRole("button", { name: "Change password" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
   });
 });

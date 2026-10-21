@@ -10,7 +10,7 @@ VIGIL can take two actions in NEXORA through its security API:
 ## Approval flow
 
 1. **Propose.** Any signed-in user (analyst or admin) proposes an action from an incident. VIGIL suggests targets taken from the incident's events: NEXORA users and API keys involved. The proposal is recorded in the timeline and the audit log.
-2. **Decide.** Only an **admin** can approve or reject, and both require a written reason (at least 5 characters). The admin role is checked on the server for every call.
+2. **Decide.** Only an **admin** can approve or reject, and both require a written reason (at least 5 characters). The admin role is checked on the server for every call. Four eyes: the person who proposed an action cannot approve it; another admin has to (they may still reject their own proposal).
 3. **Execute.** On approval, VIGIL calls NEXORA with the **respond key** (`NEXORA_RESPONSE_API_KEY`, scope `security:respond`). This key is separate from the read key used for polling. The reason is sent to NEXORA together with the VIGIL incident id, and the response action id is used as the `Idempotency-Key`.
 4. **Record.** The status (executed or failed), the request summary (method, URL, body, header *names* only) and the response summary (status code and body excerpt) go to the incident timeline, the response record and the audit log. The key itself is never stored.
 

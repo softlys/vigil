@@ -13,6 +13,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Every page depends on the signed-in analyst and live data: request-time rendering, no Cache Components.
   poweredByHeader: false,
+  // The dev-only Next.js indicator sits bottom-right, away from the sidebar's sign-out button.
+  devIndicators: { position: "bottom-right" },
   // The embedded PostgreSQL (WASM) and the pg driver run as plain Node modules, not bundled.
   serverExternalPackages: ["@electric-sql/pglite", "pg"],
   experimental: {

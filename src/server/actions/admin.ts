@@ -21,10 +21,22 @@ import { action, ActionError } from "../action";
 // Rules (admin)
 // ---------------------------------------------------------------------------
 
+/**
+ * Turning a rule off needs a reason (it is a blind spot until someone turns it back on).
+ * Integrity rules cannot be turned off: they are how tampering with the event stream is noticed.
+ */
 export async function setRuleEnabledAction(input: unknown) {
-  return action({ role: "admin", schema: z.object({ id: z.string().max(20), enabled: z.boolean() }).strict() }, input, async ({ sql, user }, d) => {
+  const schema = z
+    .object({ id: z.string().max(20), enabled: z.boolean(), reason: z.string().trim().max(500).default("") })
+    .strict()
+    .refine((d) => d.enabled || d.reason.length >= 5, { path: ["reason"], message: "Explain why the rule is turned off (at least 5 characters)" });
+  return action({ role: "admin", schema }, input, async ({ sql, user }, d) => {
+    const current = await getRule(sql, d.id);
+    if (!current) throw new ActionError("Rule not found.");
+    if (!d.enabled && current.definition.type === "integrity") throw new ActionError("Integrity rules are always on: they detect gaps and tampering in the event stream.");
+    if (current.enabled === d.enabled) return undefined;
     const rule = await setRuleEnabled(sql, d.id, d.enabled, user.id);
-    await audit(sql, user, d.enabled ? "rule.enabled" : "rule.disabled", { type: "rule", id: d.id }, { version: rule.version });
+    await audit(sql, user, d.enabled ? "rule.enabled" : "rule.disabled", { type: "rule", id: d.id }, { version: rule.version, ...(d.enabled ? {} : { reason: d.reason }) });
     revalidatePath("/rules");
     revalidatePath(`/rules/${d.id}`);
     return undefined;
@@ -33,21 +45,45 @@ export async function setRuleEnabledAction(input: unknown) {
 
 export async function saveRuleAction(input: unknown) {
   return action({ role: "admin", schema: z.object({ id: z.string().max(20), json: z.string().max(20_000) }).strict() }, input, async ({ sql, user }, d) => {
-    let definition: unknown;
-    try {
-      definition = JSON.parse(d.json);
-    } catch (error) {
-      return { issues: [{ path: "(json)", message: error instanceof Error ? error.message : "Invalid JSON" }] };
-    }
+    const definition = parseJson(d.json);
+    if (!definition.ok) return { issues: [definition.issue] };
     const before = await getRule(sql, d.id);
     try {
-      const saved = await saveRule(sql, d.id, definition, user.id);
+      const saved = await saveRule(sql, d.id, definition.value, user.id);
       await audit(sql, user, "rule.updated", { type: "rule", id: d.id }, { from_version: before?.version, to_version: saved.version });
       revalidatePath("/rules");
       revalidatePath(`/rules/${d.id}`);
       return { version: saved.version };
     } catch (error) {
       if (error instanceof RuleValidationError) return { issues: error.issues };
+      throw error;
+    }
+  });
+}
+
+function parseJson(text: string): { ok: true; value: unknown } | { ok: false; issue: { path: string; message: string } } {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch (error) {
+    return { ok: false, issue: { path: "(json)", message: `This is not valid JSON: ${error instanceof Error ? error.message : "parse error"}` } };
+  }
+}
+
+/** Restores an earlier version by saving its definition as a new version (history is never rewritten). */
+export async function restoreRuleVersionAction(input: unknown) {
+  return action({ role: "admin", schema: z.object({ id: z.string().max(20), version: z.number().int().min(1) }).strict() }, input, async ({ sql, user }, d) => {
+    const row = (await sql.query<{ definition: unknown }>("select definition from rule_versions where rule_id = $1 and version = $2", [d.id, d.version]))[0];
+    if (!row) throw new ActionError("That version does not exist.");
+    const before = await getRule(sql, d.id);
+    if (before?.version === d.version) throw new ActionError("This is already the current version.");
+    try {
+      const saved = await saveRule(sql, d.id, row.definition, user.id);
+      await audit(sql, user, "rule.restored", { type: "rule", id: d.id }, { from_version: before?.version, restored_version: d.version, to_version: saved.version });
+      revalidatePath("/rules");
+      revalidatePath(`/rules/${d.id}`);
+      return { version: saved.version };
+    } catch (error) {
+      if (error instanceof RuleValidationError) throw new ActionError(`Version ${d.version} no longer passes validation: ${error.message}`);
       throw error;
     }
   });
@@ -61,7 +97,9 @@ export async function backtestAction(input: unknown) {
     if (!stored) throw new ActionError("Rule not found.");
     let rule = stored.definition;
     if (d.json) {
-      const parsed = validateRule(JSON.parse(d.json));
+      const json = parseJson(d.json);
+      if (!json.ok) return { issues: [json.issue], hits: [], evaluated: 0, truncated: false };
+      const parsed = validateRule(json.value);
       if (!parsed.ok) return { issues: parsed.issues, hits: [], evaluated: 0, truncated: false };
       rule = parsed.rule;
     }
@@ -147,12 +185,18 @@ export async function runScenarioAction(input: unknown) {
   const keys = SCENARIOS.map((s) => s.key) as [string, ...string[]];
   return action({ role: "admin", schema: z.object({ key: z.enum(keys) }).strict() }, input, async ({ sql, user }, d) => {
     if (!getConfig().simulator) throw new ActionError("The simulator is off (production mode or VIGIL_SIMULATOR=0).");
+    const startedAt = (await sql.query<{ now: string }>("select now()::text as now"))[0]!.now;
     const result = await withWorkerLock(() => runScenario(sql, d.key as (typeof SCENARIOS)[number]["key"], new Date()));
     // Evaluate right away so the analyst sees the alert without waiting for the next tick.
-    const tick = await workerTick(sql, new Date());
-    await audit(sql, user, "simulator.scenario_run", { type: "scenario", id: d.key }, { stored: result.stored });
+    await workerTick(sql, new Date());
+    // Count every alert raised or re-fired since the run started, whichever worker evaluated it.
+    const alerts = (await sql.query<{ created: number; updated: number }>(
+      "select count(*) filter (where created_at >= $1)::int as created, count(*) filter (where created_at < $1 and last_seen_at >= $1)::int as updated from alerts where last_seen_at >= $1 or created_at >= $1",
+      [startedAt],
+    ))[0]!;
+    await audit(sql, user, "simulator.scenario_run", { type: "scenario", id: d.key }, { stored: result.stored, alerts: alerts.created });
     revalidatePath("/", "layout");
-    return { stored: result.stored, alerts: tick.alertsCreated + tick.integrityAlerts };
+    return { stored: result.stored, alerts: alerts.created, updated: alerts.updated };
   });
 }
 
@@ -183,7 +227,8 @@ export async function createUserAction(input: unknown) {
       const exists = await sql.query("select 1 from users where email = $1", [email]);
       if (exists.length) throw new ActionError("A user with this email exists.");
       const id = randomUUID();
-      await sql.query("insert into users (id, email, name, role, password_hash) values ($1, $2, $3, $4, $5)", [id, email, d.name, d.role, await hashPassword(d.password)]);
+      // The initial password is shared out of band, so the new user must replace it at first sign-in.
+      await sql.query("insert into users (id, email, name, role, password_hash, must_change_password) values ($1, $2, $3, $4, $5, true)", [id, email, d.name, d.role, await hashPassword(d.password)]);
       await audit(sql, user, "user.created", { type: "user", id }, { email, role: d.role });
       revalidatePath("/settings");
       return { id };
@@ -203,6 +248,44 @@ export async function updateUserAction(input: unknown) {
     await sql.query("update users set role = $2, active = $3 where id = $1", [d.id, d.role, d.active]);
     if (!d.active) await sql.query("delete from sessions where user_id = $1", [d.id]);
     await audit(sql, user, "user.updated", { type: "user", id: d.id }, { from: before, to: { role: d.role, active: d.active } });
+    revalidatePath("/settings");
+    return undefined;
+  });
+}
+
+/** Sets a temporary password; the user must change it at next sign-in, and their sessions end. */
+export async function resetUserPasswordAction(input: unknown) {
+  return action({ role: "admin", schema: z.object({ id: z.uuid(), password: z.string().min(12, "At least 12 characters").max(200) }).strict() }, input, async ({ sql, user }, d) => {
+    if (d.id === user.id) throw new ActionError("Change your own password from your account page.");
+    const target = (await sql.query<{ email: string }>("select email from users where id = $1", [d.id]))[0];
+    if (!target) throw new ActionError("User not found.");
+    await sql.query("update users set password_hash = $2, must_change_password = true, failed_logins = 0, locked_until = null where id = $1", [d.id, await hashPassword(d.password)]);
+    await sql.query("delete from sessions where user_id = $1", [d.id]);
+    await audit(sql, user, "user.password_reset", { type: "user", id: d.id }, { email: target.email });
+    revalidatePath("/settings");
+    return undefined;
+  });
+}
+
+/**
+ * Deletes a user account. Their past actions keep pointing at the id in the audit log and timelines
+ * (shown as "deleted user"). You cannot delete yourself or the last active admin.
+ */
+export async function deleteUserAction(input: unknown) {
+  return action({ role: "admin", schema: z.object({ id: z.uuid() }).strict() }, input, async ({ sql, user }, d) => {
+    if (d.id === user.id) throw new ActionError("You cannot delete your own account.");
+    const target = (await sql.query<{ email: string; role: string; active: boolean }>("select email, role, active from users where id = $1", [d.id]))[0];
+    if (!target) throw new ActionError("User not found.");
+    if (target.role === "admin" && target.active) {
+      const admins = (await sql.query<{ n: number }>("select count(*)::int as n from users where role = 'admin' and active and id <> $1", [d.id]))[0]!.n;
+      if (admins === 0) throw new ActionError("VIGIL needs at least one active admin.");
+    }
+    await sql.tx(async (q) => {
+      await q.query("delete from sessions where user_id = $1", [d.id]);
+      await q.query("update incidents set assignee_id = null where assignee_id = $1", [d.id]);
+      await q.query("delete from users where id = $1", [d.id]);
+    });
+    await audit(sql, user, "user.deleted", { type: "user", id: d.id }, { email: target.email, role: target.role });
     revalidatePath("/settings");
     return undefined;
   });

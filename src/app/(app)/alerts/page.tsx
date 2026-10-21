@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { Empty, first, PageTitle, pageOf, Pagination, SeverityBadge, SimulatedBadge } from "@/components/vigil/bits";
+import { cap, clampPage, Empty, IgnoredFilters, oneOf, PageTitle, pageOf, Pagination, SeverityBadge, SimulatedBadge } from "@/components/vigil/bits";
 import { FilterBar } from "@/components/vigil/filter-bar";
 import { formatRelative } from "@/lib/format";
 import { loadRules } from "@/lib/rules-store";
@@ -13,13 +13,16 @@ export const metadata = { title: "Alerts" };
 export default async function AlertsPage({ searchParams }: PageProps<"/alerts">) {
   await requireUser();
   const p = await searchParams;
-  const status = ["open", "closed"].includes(first(p.status) ?? "") ? first(p.status) : undefined;
-  const severity = ["critical", "high", "medium", "low"].includes(first(p.severity) ?? "") ? first(p.severity) : undefined;
-  const rule = first(p.rule)?.match(/^[A-Z]{2,5}-\d{3}$/) ? first(p.rule) : undefined;
-  const page = pageOf(p.page);
+  const ignored: string[] = [];
+  const status = oneOf(p.status, ["open", "closed"], "status", ignored);
+  const severity = oneOf(p.severity, ["critical", "high", "medium", "low"], "severity", ignored);
   const sql = await db();
-  const [{ rows, total }, rules] = await Promise.all([listAlerts(sql, { status, severity, rule, page }), loadRules(sql)]);
+  const rules = await loadRules(sql);
+  const rule = oneOf(p.rule, rules.map((r) => r.id), "rule", ignored);
+  const page = pageOf(p.page);
+  const { rows, total } = await listAlerts(sql, { status, severity, rule, page });
   const keep = { status, severity, rule };
+  clampPage(page, total, PAGE_SIZE, "/alerts", keep);
 
   return (
     <>
@@ -27,10 +30,11 @@ export default async function AlertsPage({ searchParams }: PageProps<"/alerts">)
       <FilterBar
         filters={[
           { key: "status", label: "All statuses", options: [{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }] },
-          { key: "severity", label: "All severities", options: ["critical", "high", "medium", "low"].map((s) => ({ value: s, label: s })) },
+          { key: "severity", label: "All severities", options: ["critical", "high", "medium", "low"].map((s) => ({ value: s, label: cap(s) })) },
           { key: "rule", label: "All rules", options: rules.map((r) => ({ value: r.id, label: `${r.id} ${r.definition.title}` })) },
         ]}
       />
+      <IgnoredFilters ignored={ignored} />
       {rows.length === 0 ? (
         <Empty>No alerts match these filters.</Empty>
       ) : (

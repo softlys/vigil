@@ -45,7 +45,8 @@ export async function bootstrap(sql: Sql): Promise<{ users: number; rules: numbe
       const email = process.env.VIGIL_ADMIN_EMAIL?.trim().toLowerCase();
       const password = process.env.VIGIL_ADMIN_PASSWORD ?? "";
       if (email && password.length >= 12) {
-        await sql.query("insert into users (id, email, name, role, password_hash) values ($1, $2, 'Administrator', 'admin', $3)", [randomUUID(), email, await hashPassword(password)]);
+        // The bootstrap password lives in the environment, so it must be replaced at first sign-in.
+        await sql.query("insert into users (id, email, name, role, password_hash, must_change_password) values ($1, $2, 'Administrator', 'admin', $3, true)", [randomUUID(), email, await hashPassword(password)]);
         users += 1;
       } else {
         console.warn("[vigil] No users exist. Set VIGIL_ADMIN_EMAIL and VIGIL_ADMIN_PASSWORD (12+ characters) to create the first admin.");

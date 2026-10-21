@@ -2,8 +2,9 @@
 
 import { Play, PlugZap, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { FormField } from "@/components/patterns/form-field";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { createUserAction, runArchiveAction, runScenarioAction, saveSettingsAction, testChannelAction, testConnectorAction, updateUserAction } from "@/server/actions/admin";
+import { createUserAction, deleteUserAction, resetUserPasswordAction, runArchiveAction, runScenarioAction, saveSettingsAction, testChannelAction, testConnectorAction, updateUserAction } from "@/server/actions/admin";
+
+const plural = (n: number, word: string) => `${n.toLocaleString("en-US")} ${word}${n === 1 ? "" : "s"}`;
 
 export function ConnectorTest({ disabled }: { disabled: boolean }) {
   const router = useRouter();
@@ -40,6 +43,8 @@ export function ScenarioRunner({ scenarios }: { scenarios: Array<{ key: string; 
   const router = useRouter();
   const [pending, start] = useTransition();
   const [running, setRunning] = useState<string | null>(null);
+  // A second click before React re-renders the disabled button must not start a second run.
+  const busy = useRef(false);
   return (
     <ul className="grid gap-2 sm:grid-cols-2">
       {scenarios.map((s) => (
@@ -54,12 +59,17 @@ export function ScenarioRunner({ scenarios }: { scenarios: Array<{ key: string; 
             disabled={pending}
             data-testid={`run-${s.key}`}
             onClick={() => {
+              if (busy.current) return;
+              busy.current = true;
               setRunning(s.key);
               start(async () => {
                 const r = await runScenarioAction({ key: s.key });
+                busy.current = false;
                 setRunning(null);
                 if (!r.ok) return void toast.error(r.error);
-                toast.success(`${s.title}: ${r.data.stored} simulated events, ${r.data.alerts} new alerts`);
+                const parts = [plural(r.data.stored, "simulated event"), plural(r.data.alerts, "new alert")];
+                if (r.data.updated > 0) parts.push(`${plural(r.data.updated, "existing alert")} updated`);
+                toast.success(`${s.title}: ${parts.join(", ")}`);
                 router.refresh();
               });
             }}
@@ -143,16 +153,18 @@ export function RetentionSettings({ retentionDays, minSeverity, notifySimulated 
   const router = useRouter();
   const [days, setDays] = useState(String(retentionDays));
   const [archiving, start] = useTransition();
+  const error = retentionError(days);
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <FormField id="retention-days" label="Keep events for (days)" hint="7–3650 days.">
-        <Input id="retention-days" type="number" min={7} max={3650} value={days} onChange={(e) => setDays(e.target.value)} className="w-32" />
+    <div className="flex flex-wrap items-start gap-3">
+      <FormField id="retention-days" label="Keep events for (days)" hint="Between 7 and 3650 days (10 years)." error={error ?? undefined}>
+        <Input id="retention-days" type="number" inputMode="numeric" min={7} max={3650} step={1} value={days} onChange={(e) => setDays(e.target.value)} className="w-32" aria-invalid={error ? true : undefined} />
       </FormField>
-      <Button disabled={pending || Number(days) === retentionDays} onClick={() => save({ retention_days: Number(days), notify_min_severity: minSeverity, notify_simulated: notifySimulated })}>
+      <Button className="mt-6" disabled={pending || error !== null || Number(days) === retentionDays} onClick={() => save({ retention_days: Number(days), notify_min_severity: minSeverity, notify_simulated: notifySimulated })}>
         Save
       </Button>
       <Button
         variant="outline"
+        className="mt-6"
         disabled={archiving}
         onClick={() =>
           start(async () => {
@@ -169,7 +181,75 @@ export function RetentionSettings({ retentionDays, minSeverity, notifySimulated 
   );
 }
 
-type UserRow = { id: string; email: string; name: string; role: "analyst" | "admin"; active: boolean; last_login_at: string | null };
+export function retentionError(value: string): string | null {
+  if (value.trim() === "") return "Enter a number of days.";
+  const n = Number(value);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return "Use a whole number of days.";
+  if (n < 7) return "Keep events for at least 7 days.";
+  if (n > 3650) return "The maximum is 3650 days (10 years).";
+  return null;
+}
+
+type UserRow = { id: string; email: string; name: string; role: "analyst" | "admin"; active: boolean; last_login_at: string | null; must_change_password?: boolean };
+
+function UserActions({ user }: { user: UserRow }) {
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [resetOpen, setResetOpen] = useState(false);
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <ConfirmDialog
+        open={resetOpen}
+        onOpenChange={(o) => {
+          setResetOpen(o);
+          if (!o) setPassword("");
+        }}
+        trigger={
+          <Button size="sm" variant="outline">
+            Reset password
+          </Button>
+        }
+        title={`Reset the password of ${user.name}?`}
+        description="Their sessions end now, and they must choose a new password the next time they sign in. Share the temporary password out of band."
+        confirmLabel="Reset password"
+        onConfirm={async () => {
+          const r = await resetUserPasswordAction({ id: user.id, password });
+          if (!r.ok) {
+            toast.error(r.fieldErrors ? (Object.values(r.fieldErrors).flat()[0] ?? r.error) : r.error);
+            return false;
+          }
+          toast.success(`Password reset for ${user.name}`);
+          setPassword("");
+          router.refresh();
+        }}
+      >
+        <FormField id={`reset-${user.id}`} label="Temporary password" hint={`At least 12 characters${password.length > 0 && password.length < 12 ? ` (${12 - password.length} more)` : ""}.`}>
+          <Input id={`reset-${user.id}`} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={12} maxLength={200} />
+        </FormField>
+      </ConfirmDialog>
+      <ConfirmDialog
+        trigger={
+          <Button size="sm" variant="ghost" className="text-danger">
+            Delete
+          </Button>
+        }
+        title={`Delete ${user.name}?`}
+        description="The account and its sessions are removed. Its past actions stay in the audit log and incident timelines. To keep the account but block sign-in, deactivate it instead."
+        confirmLabel="Delete user"
+        destructive
+        onConfirm={async () => {
+          const r = await deleteUserAction({ id: user.id });
+          if (!r.ok) {
+            toast.error(r.error);
+            return false;
+          }
+          toast.success(`${user.name} deleted`);
+          router.refresh();
+        }}
+      />
+    </div>
+  );
+}
 
 export function Users({ users, currentUserId }: { users: UserRow[]; currentUserId: string }) {
   const router = useRouter();
@@ -192,7 +272,10 @@ export function Users({ users, currentUserId }: { users: UserRow[]; currentUserI
               <th scope="col" className="py-2 pr-3 text-left font-medium">User</th>
               <th scope="col" className="py-2 pr-3 text-left font-medium">Role</th>
               <th scope="col" className="py-2 pr-3 text-left font-medium">Active</th>
-              <th scope="col" className="hidden py-2 text-left font-medium sm:table-cell">Last sign-in</th>
+              <th scope="col" className="hidden py-2 pr-3 text-left font-medium sm:table-cell">Last sign-in</th>
+              <th scope="col" className="py-2 text-left font-medium">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -201,6 +284,7 @@ export function Users({ users, currentUserId }: { users: UserRow[]; currentUserI
                 <td className="py-2 pr-3">
                   <p className="font-medium">{u.name}</p>
                   <p className="text-xs text-text-muted">{u.email}</p>
+                  {u.must_change_password && <p className="text-[11px] text-warning">Must change password at next sign-in</p>}
                 </td>
                 <td className="py-2 pr-3">
                   <Select value={u.role} onValueChange={(v) => update(u, { role: v as UserRow["role"] })} disabled={pending || u.id === currentUserId}>
@@ -216,7 +300,8 @@ export function Users({ users, currentUserId }: { users: UserRow[]; currentUserI
                 <td className="py-2 pr-3">
                   <Switch checked={u.active} disabled={pending || u.id === currentUserId} onCheckedChange={(v) => update(u, { active: v })} aria-label={`${u.active ? "Deactivate" : "Activate"} ${u.name}`} />
                 </td>
-                <td className="hidden py-2 text-xs text-text-muted sm:table-cell">{u.last_login_at ? new Date(u.last_login_at).toISOString().slice(0, 16).replace("T", " ") : "never"}</td>
+                <td className="hidden py-2 pr-3 text-xs text-text-muted sm:table-cell">{u.last_login_at ? new Date(u.last_login_at).toISOString().slice(0, 16).replace("T", " ") : "never"}</td>
+                <td className="py-2">{u.id === currentUserId ? <span className="text-xs text-text-muted">You</span> : <UserActions user={u} />}</td>
               </tr>
             ))}
           </tbody>
@@ -253,7 +338,7 @@ export function Users({ users, currentUserId }: { users: UserRow[]; currentUserI
             </SelectContent>
           </Select>
         </FormField>
-        <FormField id="new-password" label="Initial password" hint="At least 12 characters. Share it out of band.">
+        <FormField id="new-password" label="Initial password" hint="At least 12 characters. Share it out of band; the user must change it at first sign-in.">
           <Input id="new-password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={12} autoComplete="new-password" />
         </FormField>
         <div className="sm:col-span-2">

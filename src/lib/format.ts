@@ -1,6 +1,10 @@
 /** Display formatting helpers. Formatting only; no business logic. */
 
+/** Rounding leftovers like -0.004 must not print as "-$0.00". */
+const noNegativeZero = (value: number, digits: number) => (Math.abs(value) < 0.5 * 10 ** -digits ? 0 : value);
+
 export function formatMoney(value: number, currency = "USD", locale = "en-US", compact = false): string {
+  value = noNegativeZero(value, 0);
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
@@ -11,6 +15,7 @@ export function formatMoney(value: number, currency = "USD", locale = "en-US", c
 
 /** Exact money with cents, for orders, items and payments. */
 export function formatAmount(value: number, currency = "USD", locale = "en-US"): string {
+  value = noNegativeZero(value, 2);
   return new Intl.NumberFormat(locale, { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 

@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { headers } from "next/headers";
-import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -17,18 +15,15 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#0d0e11" };
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
-  // The per-request CSP nonce from src/proxy.ts, for the theme script.
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
+/** VIGIL is dark only: the class is static, so no theme script runs before hydration. */
+export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="en" className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`} style={{ colorScheme: "dark" }}>
       <body className="min-h-full">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange nonce={nonce}>
-          <TooltipProvider delayDuration={300}>
-            {children}
-            <Toaster position="bottom-right" closeButton />
-          </TooltipProvider>
-        </ThemeProvider>
+        <TooltipProvider delayDuration={300}>
+          {children}
+          <Toaster position="top-center" closeButton />
+        </TooltipProvider>
       </body>
     </html>
   );

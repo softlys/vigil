@@ -101,6 +101,22 @@ VIGIL is the security-monitoring companion to NEXORA (prompt 5), in its own repo
 - README: what VIGIL is and is not, architecture diagram, screenshots, setup, demo mode, connecting to NEXORA.
 - `docs/`: architecture, event-schema, detection-rules, response, drill, deployment, limitations.
 
+### QA fixes (2026-10-21)
+
+From the manual QA report (25 items):
+
+- **Sign-in.** Each failure slows the next answer; 5 failures lock an account for 15 minutes (migration `0002_account_security.sql`: `failed_logins`, `locked_until`, `must_change_password`). The email stays filled in after an error, and `?next=` (same-site paths only) returns you to the page you asked for.
+- **Passwords.** New users, admin resets and the bootstrap admin must change the password at first sign-in (`/account/password`, outside the app layout so nothing else is reachable first). Changing it signs out the other sessions. Admins can reset passwords and delete users (not themselves, not the last active admin).
+- **Four eyes.** The admin who proposed a response cannot approve it (server and UI). Propose buttons are disabled while the same action waits for approval, and each candidate says why it is listed ("performed N events", "targeted by N events"). The approve dialog text depends on the playbook and on simulated vs real.
+- **Rules.** Turning a rule off asks for confirmation and a reason (audited); integrity rules cannot be turned off. Version history with a line diff against the current version and restore (saved as a new version). Editor problems and old backtest results clear when you edit, run or save; invalid JSON is a validation issue, not an error reference.
+- **Backtest = live.** Backtests replay in storage order with history over all stored events and the live dedup key (source, organization, key); a unit test compares backtest and live alerts over six scenarios. Timestamps from the driver are normalized to ISO strings before evaluation (some rows came back as Date objects).
+- **Simulator.** Scenarios end at "now" instead of running into the next minutes; baseline never emits events after its end; successful sign-ins have the user as actor (also fixed in NEXORA). The scenario toast counts alerts raised since the run started, pluralizes, and a double click starts one run.
+- **Overview chart.** Every bucket from the range start to now, zeros included; 30d uses day buckets; unique tick labels.
+- **Lists.** A page past the end redirects to the last page; unknown filter values are ignored with a visible note; filter labels are capitalized.
+- **Texts.** No repeated rule title in timelines or integrity alerts; resolution note and decision reasons say "at least 5 characters" and the buttons wait for it; friendly retention validation.
+- **Audit.** Assignee changes and notes are written to the audit log.
+- **Shell.** Settings is hidden from analysts; "Change password" in the sidebar; styled 404 and 403; VIGIL is dark-only without next-themes (no script-tag warning); the Next.js dev indicator moved bottom-right in both apps.
+
 ## Verified in this session
 
 Commands run from the project root on Windows 11, Node 24.21:
@@ -109,9 +125,9 @@ Commands run from the project root on Windows 11, Node 24.21:
 | --- | --- |
 | `npm run lint` | pass, 0 problems |
 | `npm run typecheck` | pass |
-| `npm test` | 53 passed (3 files). Covers: every rule type with positive and negative fixtures; every built-in rule against its scenario (no other rule fires); a 3-day baseline fires nothing; chain verification (valid, modified, gap, re-linked, rewritten history, heartbeat gaps); append-only and retention; alert dedup and grouping; each scenario end to end (ingest → detection → expected alerts exactly once); demo backfill fires all 15 rules; connector paging, cursor resume after restart, backoff, schema-mismatch stop; response (simulated, real with fake executor, reason, double decision, missing config); notifications |
+| `npm test` | 55 passed (3 files), including backtest-vs-live parity and four-eyes approval. Covers: every rule type with positive and negative fixtures; every built-in rule against its scenario (no other rule fires); a 3-day baseline fires nothing; chain verification (valid, modified, gap, re-linked, rewritten history, heartbeat gaps); append-only and retention; alert dedup and grouping; each scenario end to end (ingest → detection → expected alerts exactly once); demo backfill fires all 15 rules; connector paging, cursor resume after restart, backoff, schema-mismatch stop; response (simulated, real with fake executor, reason, double decision, missing config); notifications |
 | `npm run build` | pass (run by the e2e web server) |
-| `npm run test:e2e` | 4 passed against a production build in demo mode: auth on every route and security headers; analyst opens an alert, pivots to the attacker IP, opens raw JSON and chain position, is refused Settings; analyst proposes and admin approves a simulated revoke with a reason (timeline and audit); admin runs a scenario and backtests a rule |
+| `npm run test:e2e` | 6 passed against a production build in demo mode (QA regressions: `?next=` return, analyst nav, styled 404, ignored filter values, page clamping, integrity rule locked on, disable-with-reason dialog, forced password change for a new user): auth on every route and security headers; analyst opens an alert, pivots to the attacker IP, opens raw JSON and chain position, is refused Settings; analyst proposes and admin approves a simulated revoke with a reason (timeline and audit); admin runs a scenario and backtests a rule |
 | Live check with NEXORA | NEXORA (local, demo mode, `CRON_SECRET` set) plus VIGIL with real read and respond SIEM keys and the simulator off: 21 real events ingested with an intact chain. `npm run drill -- --yes` raised VGL-007, VGL-009 and VGL-014. Approving Revoke API key from the VGL-009 incident made NEXORA return 401 "This API key was revoked." for the drill key |
 
 The final verification table at the end of the session (below) supersedes these numbers if they differ.

@@ -53,7 +53,7 @@ export default async function RulesPage() {
                   <span className="font-mono text-xs">{r.definition.mitre.map((m) => m.id).join(", ") || "—"}</span>
                 </td>
                 <td className="hidden px-3 py-2 text-right tabular-nums sm:table-cell">{byRule.get(r.id)?.alerts ?? 0}</td>
-                <td className="px-3 py-2">{user.role === "admin" ? <RuleToggle id={r.id} enabled={r.enabled} /> : <StatusBadge status={r.enabled ? "active" : "inactive"} label={r.enabled ? "On" : "Off"} />}</td>
+                <td className="px-3 py-2">{user.role === "admin" ? <RuleToggle id={r.id} title={r.definition.title} enabled={r.enabled} locked={r.definition.type === "integrity"} /> : <StatusBadge status={r.enabled ? "active" : "inactive"} label={r.enabled ? "On" : "Off"} />}</td>
               </tr>
             ))}
           </tbody>

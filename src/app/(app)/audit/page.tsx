@@ -1,4 +1,4 @@
-import { Empty, PageTitle, pageOf, Pagination } from "@/components/vigil/bits";
+import { clampPage, Empty, PageTitle, pageOf, Pagination } from "@/components/vigil/bits";
 import { formatDate } from "@/lib/format";
 import { db } from "@/server/db";
 import { listAudit, PAGE_SIZE } from "@/server/queries";
@@ -10,6 +10,7 @@ export default async function AuditPage({ searchParams }: PageProps<"/audit">) {
   await requireUser();
   const page = pageOf((await searchParams).page);
   const { rows, total } = await listAudit(await db(), page);
+  clampPage(page, total, PAGE_SIZE, "/audit", {});
   return (
     <>
       <PageTitle title="Audit log" description="VIGIL's own sensitive actions: sign-ins, rule changes, response decisions, user and settings changes, simulator runs and archive jobs. Append-only." />

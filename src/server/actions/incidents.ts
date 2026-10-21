@@ -46,8 +46,12 @@ export async function assignIncidentAction(input: unknown) {
       if (!u) throw new ActionError("That user does not exist or is inactive.");
       name = u.name;
     }
+    const before = (await sql.query<{ assignee_id: string | null }>("select assignee_id from incidents where id = $1", [d.id]))[0];
+    if (!before) throw new ActionError("Incident not found.");
+    if (before.assignee_id === d.assignee_id) return undefined;
     await sql.query("update incidents set assignee_id = $2, updated_at = now() where id = $1", [d.id, d.assignee_id]);
     await sql.query("insert into incident_timeline (incident_id, kind, actor_id, body) values ($1, 'assign', $2, $3)", [d.id, user.id, `Assigned to ${name}`]);
+    await audit(sql, user, "incident.assigned", { type: "incident", id: d.id }, { from: before.assignee_id, to: d.assignee_id });
     refresh(d.id);
     return undefined;
   });
@@ -55,8 +59,11 @@ export async function assignIncidentAction(input: unknown) {
 
 export async function addNoteAction(input: unknown) {
   return action({ schema: z.object({ id: z.uuid(), body: z.string().trim().min(1, "Write a note").max(4000) }).strict() }, input, async ({ sql, user }, d) => {
+    const exists = await sql.query("select 1 from incidents where id = $1", [d.id]);
+    if (!exists.length) throw new ActionError("Incident not found.");
     await sql.query("insert into incident_timeline (incident_id, kind, actor_id, body) values ($1, 'note', $2, $3)", [d.id, user.id, d.body]);
     await sql.query("update incidents set updated_at = now() where id = $1", [d.id]);
+    await audit(sql, user, "incident.note_added", { type: "incident", id: d.id }, { length: d.body.length });
     refresh(d.id);
     return undefined;
   });

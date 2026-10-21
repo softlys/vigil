@@ -61,7 +61,7 @@ export async function proposeResponse(sql: Sql, input: { incidentId: string; kin
   return id;
 }
 
-type ActionRow = { id: string; incident_id: string; kind: ResponseKind; target_id: string; target_label: string | null; status: string; simulated: boolean };
+type ActionRow = { id: string; incident_id: string; kind: ResponseKind; target_id: string; target_label: string | null; status: string; simulated: boolean; proposed_by: string | null };
 
 export type Executor = (input: { url: string; key: string; body: Record<string, unknown> }) => Promise<{ status: number; body: string }>;
 
@@ -85,6 +85,8 @@ export async function approveResponse(
   const action = (await sql.query<ActionRow>("select * from response_actions where id = $1", [input.actionId]))[0];
   if (!action) throw new ResponseError("Response action not found.");
   if (action.status !== "proposed") throw new ResponseError(`This action was already ${action.status}.`);
+  // Four eyes: the person who proposed an action cannot also approve it.
+  if (action.proposed_by === input.admin.id) throw new ResponseError("You proposed this action, so another admin has to approve it.");
   const playbook = PLAYBOOKS[action.kind];
   const config = input.config ?? getConfig();
   const requestBody = { [playbook.field]: action.target_id, reason: `${reason} (VIGIL incident ${action.incident_id})` };
@@ -149,14 +151,31 @@ export async function rejectResponse(sql: Sql, input: { actionId: string; reason
 }
 
 /** Candidate targets from an incident's events: NEXORA users and API keys involved. */
-export function responseCandidates(events: Array<{ actor_type: string; actor_id: string | null; target_type: string | null; target_id: string | null; action: string }>) {
-  const users = new Set<string>();
-  const keys = new Set<string>();
+export type ResponseCandidate = { id: string; why: string };
+
+/**
+ * Accounts and keys an analyst may act on, each with the reason it is listed:
+ * - "performed": it acted in this incident's events (e.g. the key that made the requests);
+ * - "targeted": events were aimed at it (e.g. the account under a password spray, or a key that was created).
+ * Both sides are always listed the same way; the reason tells the analyst which side it is on.
+ */
+export function responseCandidates(events: Array<{ actor_type: string; actor_id: string | null; target_type: string | null; target_id: string | null; action: string }>): { users: ResponseCandidate[]; keys: ResponseCandidate[] } {
+  type Tally = { acted: number; targeted: number };
+  const tally = (m: Map<string, Tally>, id: string, side: keyof Tally) => {
+    const t = m.get(id) ?? { acted: 0, targeted: 0 };
+    t[side] += 1;
+    m.set(id, t);
+  };
+  const users = new Map<string, Tally>();
+  const keys = new Map<string, Tally>();
   for (const e of events) {
-    if (e.actor_type === "user" && e.actor_id) users.add(e.actor_id);
-    if (e.actor_type === "api_key" && e.actor_id) keys.add(e.actor_id);
-    if (e.target_type === "api_key" && e.target_id) keys.add(e.target_id);
-    if ((e.target_type === "account" || e.target_type === "profile") && e.target_id && e.action !== "auth.login_failed") users.add(e.target_id);
+    if (e.actor_type === "user" && e.actor_id) tally(users, e.actor_id, "acted");
+    if (e.actor_type === "api_key" && e.actor_id) tally(keys, e.actor_id, "acted");
+    if (e.target_type === "api_key" && e.target_id) tally(keys, e.target_id, "targeted");
+    if ((e.target_type === "account" || e.target_type === "profile" || e.target_type === "user") && e.target_id && e.target_id !== e.actor_id) tally(users, e.target_id, "targeted");
   }
-  return { users: [...users], keys: [...keys] };
+  const plural = (n: number) => `${n} event${n === 1 ? "" : "s"}`;
+  const why = (t: Tally) => [t.acted ? `performed ${plural(t.acted)}` : null, t.targeted ? `targeted by ${plural(t.targeted)}` : null].filter(Boolean).join(", ");
+  const list = (m: Map<string, Tally>) => [...m.entries()].sort((a, b) => b[1].acted - a[1].acted || b[1].targeted - a[1].targeted).map(([id, t]) => ({ id, why: why(t) }));
+  return { users: list(users), keys: list(keys) };
 }

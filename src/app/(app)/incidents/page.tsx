@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { Empty, first, PageTitle, pageOf, Pagination, SeverityBadge, SimulatedBadge } from "@/components/vigil/bits";
+import { cap, clampPage, Empty, IgnoredFilters, oneOf, PageTitle, pageOf, Pagination, SeverityBadge, SimulatedBadge } from "@/components/vigil/bits";
 import { FilterBar } from "@/components/vigil/filter-bar";
 import { formatRelative } from "@/lib/format";
 import { db } from "@/server/db";
@@ -14,24 +14,28 @@ const STATUSES = ["open", "new", "triaged", "investigating", "resolved", "false_
 export default async function IncidentsPage({ searchParams }: PageProps<"/incidents">) {
   await requireUser();
   const p = await searchParams;
-  const status = STATUSES.includes(first(p.status) ?? "") ? first(p.status) : undefined;
-  const severity = ["critical", "high", "medium", "low"].includes(first(p.severity) ?? "") ? first(p.severity) : undefined;
-  const assignee = first(p.assignee)?.slice(0, 40);
+  const ignored: string[] = [];
+  const status = oneOf(p.status, STATUSES, "status", ignored);
+  const severity = oneOf(p.severity, ["critical", "high", "medium", "low"], "severity", ignored);
   const page = pageOf(p.page);
   const sql = await db();
-  const [{ rows, total }, users] = await Promise.all([listIncidents(sql, { status, severity, assignee, page }), listUsers(sql)]);
+  const users = await listUsers(sql);
+  const assignee = oneOf(p.assignee, ["none", ...users.map((u) => u.id)], "assignee", ignored);
+  const { rows, total } = await listIncidents(sql, { status, severity, assignee, page });
   const keep = { status, severity, assignee };
+  clampPage(page, total, PAGE_SIZE, "/incidents", keep);
 
   return (
     <>
       <PageTitle title="Incidents" description="Related alerts about the same entity (account, IP, actor, key) within 24 hours are grouped into one incident. Work them from new to resolved or false positive." />
       <FilterBar
         filters={[
-          { key: "status", label: "All statuses", options: STATUSES.map((s) => ({ value: s, label: s === "open" ? "Open (not closed)" : s.replace("_", " ") })) },
-          { key: "severity", label: "All severities", options: ["critical", "high", "medium", "low"].map((s) => ({ value: s, label: s })) },
+          { key: "status", label: "All statuses", options: STATUSES.map((s) => ({ value: s, label: s === "open" ? "Open (not closed)" : cap(s) })) },
+          { key: "severity", label: "All severities", options: ["critical", "high", "medium", "low"].map((s) => ({ value: s, label: cap(s) })) },
           { key: "assignee", label: "Anyone", options: [{ value: "none", label: "Unassigned" }, ...users.map((u) => ({ value: u.id, label: u.name }))] },
         ]}
       />
+      <IgnoredFilters ignored={ignored} />
       {rows.length === 0 ? (
         <Empty>No incidents match these filters.</Empty>
       ) : (

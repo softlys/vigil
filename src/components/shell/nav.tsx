@@ -12,15 +12,16 @@ const ITEMS = [
   { href: "/alerts", label: "Alerts", icon: ShieldAlert },
   { href: "/rules", label: "Rules", icon: ListChecks },
   { href: "/audit", label: "Audit log", icon: FileClock },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Settings", icon: Settings, adminOnly: true },
   { href: "/help", label: "How VIGIL works", icon: BookOpenCheck },
 ];
 
-export function Nav({ openIncidents }: { openIncidents: number }) {
+/** Settings is admin-only, so analysts do not see a link that would only answer 403. */
+export function Nav({ openIncidents, isAdmin }: { openIncidents: number; isAdmin: boolean }) {
   const pathname = usePathname();
   return (
     <nav aria-label="Main" className="flex gap-1 overflow-x-auto md:flex-col">
-      {ITEMS.map(({ href, label, icon: Icon }) => {
+      {ITEMS.filter((i) => isAdmin || !i.adminOnly).map(({ href, label, icon: Icon }) => {
         const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link

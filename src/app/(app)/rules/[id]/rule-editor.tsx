@@ -22,8 +22,16 @@ export function RuleEditor({ id, initial, canEdit }: { id: string; initial: stri
   const [pending, start] = useTransition();
   const dirty = json !== initial;
 
+  const edit = (value: string) => {
+    setJson(value);
+    // Old problems and old backtest results describe a different draft.
+    if (issues.length) setIssues([]);
+    if (result) setResult(null);
+  };
+
   const save = () =>
     start(async () => {
+      setResult(null);
       const r = await saveRuleAction({ id, json });
       if (!r.ok) return void toast.error(r.error);
       if ("issues" in r.data && r.data.issues) return setIssues(r.data.issues);
@@ -34,6 +42,7 @@ export function RuleEditor({ id, initial, canEdit }: { id: string; initial: stri
 
   const run = () =>
     start(async () => {
+      setResult(null);
       const r = await backtestAction({ id, json: dirty ? json : undefined, days: Number(days) });
       if (!r.ok) return void toast.error(r.error);
       if (r.data.issues.length) return setIssues(r.data.issues);
@@ -47,7 +56,7 @@ export function RuleEditor({ id, initial, canEdit }: { id: string; initial: stri
         <Textarea
           aria-label="Rule JSON"
           value={json}
-          onChange={(e) => setJson(e.target.value)}
+          onChange={(e) => edit(e.target.value)}
           readOnly={!canEdit}
           spellCheck={false}
           rows={24}
@@ -72,7 +81,7 @@ export function RuleEditor({ id, initial, canEdit }: { id: string; initial: stri
             </Button>
           )}
           {canEdit && dirty && (
-            <Button variant="ghost" onClick={() => setJson(initial)} disabled={pending}>
+            <Button variant="ghost" onClick={() => edit(initial)} disabled={pending}>
               Discard changes
             </Button>
           )}

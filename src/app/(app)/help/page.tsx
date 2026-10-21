@@ -28,7 +28,7 @@ export default async function HelpPage() {
         </Panel>
         <Panel title="4. Response">
           <p className="text-sm">
-            Analysts propose revoking an API key or disabling a user. Only an admin can approve, with a written reason, and VIGIL then calls NEXORA&apos;s security-actions API with a separate respond key. Simulated incidents never call
+            Analysts propose revoking an API key or disabling a user. Only an admin can approve, with a written reason, and never their own proposal (four eyes), and VIGIL then calls NEXORA&apos;s security-actions API with a separate respond key. Simulated incidents never call
             NEXORA. Nothing destructive happens automatically.
           </p>
         </Panel>

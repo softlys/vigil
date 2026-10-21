@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { Empty, first, PageTitle, pageOf, Pagination, RangeLinks, ShortId, SimulatedBadge } from "@/components/vigil/bits";
+import { cap, clampPage, Empty, first, IgnoredFilters, oneOf, PageTitle, pageOf, Pagination, RangeLinks, ShortId, SimulatedBadge } from "@/components/vigil/bits";
 import { FilterBar } from "@/components/vigil/filter-bar";
 import { SECURITY_CATEGORIES, SECURITY_OUTCOMES, SECURITY_SEVERITIES } from "@/domain/event-schema";
 import { formatDate } from "@/lib/format";
@@ -18,22 +18,24 @@ const one = (v: string | string[] | undefined, max = 120) => {
 export default async function EventsPage({ searchParams }: PageProps<"/events">) {
   await requireUser();
   const p = await searchParams;
+  const ignored: string[] = [];
   const f: EventFilters = {
     range: rangeOf(first(p.range)),
     action: one(p.action, 64),
-    category: one(p.category, 32),
-    outcome: one(p.outcome, 16),
-    severity: one(p.severity, 16),
+    category: oneOf(p.category, SECURITY_CATEGORIES, "category", ignored),
+    outcome: oneOf(p.outcome, SECURITY_OUTCOMES, "outcome", ignored),
+    severity: oneOf(p.severity, SECURITY_SEVERITIES, "severity", ignored),
     actor: one(p.actor),
     ip: one(p.ip, 64),
     target: one(p.target),
     q: one(p.q, 100),
-    source: first(p.source) === "nexora" ? "nexora" : first(p.source) === "simulator" ? "simulator" : undefined,
+    source: oneOf(p.source, ["nexora", "simulator"], "source", ignored) as EventFilters["source"],
     page: pageOf(p.page),
   };
   const sql = await db();
   const { rows, total, facets } = await listEvents(sql, f);
   const keep = Object.fromEntries(Object.entries(f).filter(([k, v]) => k !== "page" && v !== undefined).map(([k, v]) => [k, String(v)]));
+  clampPage(f.page, total, PAGE_SIZE, "/events", keep);
 
   return (
     <>
@@ -44,12 +46,13 @@ export default async function EventsPage({ searchParams }: PageProps<"/events">)
         pivots={["actor", "ip", "target"]}
         filters={[
           { key: "action", label: "All actions", options: facets.map((x) => ({ value: x.action, label: `${x.action} (${x.n})` })) },
-          { key: "category", label: "All categories", options: SECURITY_CATEGORIES.map((c) => ({ value: c, label: c.replace("_", " ") })) },
-          { key: "outcome", label: "All outcomes", options: SECURITY_OUTCOMES.map((o) => ({ value: o, label: o })) },
-          { key: "severity", label: "All severities", options: SECURITY_SEVERITIES.map((s) => ({ value: s, label: s })) },
+          { key: "category", label: "All categories", options: SECURITY_CATEGORIES.map((c) => ({ value: c, label: cap(c) })) },
+          { key: "outcome", label: "All outcomes", options: SECURITY_OUTCOMES.map((o) => ({ value: o, label: cap(o) })) },
+          { key: "severity", label: "All severities", options: SECURITY_SEVERITIES.map((s) => ({ value: s, label: cap(s) })) },
           { key: "source", label: "All sources", options: [{ value: "nexora", label: "NEXORA (real)" }, { value: "simulator", label: "Simulator" }] },
         ]}
       />
+      <IgnoredFilters ignored={ignored} />
       {rows.length === 0 ? (
         <Empty>No events match these filters.</Empty>
       ) : (

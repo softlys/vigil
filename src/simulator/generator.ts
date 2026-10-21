@@ -85,7 +85,7 @@ export function baseline(from: Date, to: Date, r: Rng, lastHeartbeat: Date | nul
       const u = pick(r, USERS);
       const when = jitter();
       if (r() < 0.12) out.push(draft("auth.login_failed", when, anonymous, src(u.ip), { type: "account", id: u.id }, { account_key: u.accountKey, known_account: true, reason: "invalid_credentials" }));
-      out.push(draft("auth.login_succeeded", at(when, 20), anonymous, src(u.ip), { type: "account", id: u.id }, { account_key: u.accountKey, user_id: u.id }));
+      out.push(draft("auth.login_succeeded", at(when, 20), userActor(u), src(u.ip), { type: "account", id: u.id }, { account_key: u.accountKey, user_id: u.id }));
     }
     if (busy && r() < 0.35) {
       out.push(draft("integration.webhook_sent", jitter(), service, src(null, null), { type: "integration", id: WORKFLOW_IDS[0]! }, { provider: "make", domain: pick(r, KNOWN_WEBHOOK_DOMAINS), event_type: "lead.created", attempt: 1, status_code: 200, outcome: "success" }));
@@ -113,7 +113,8 @@ export function baseline(from: Date, to: Date, r: Rng, lastHeartbeat: Date | nul
       }
     }
   }
-  return out.sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
+  // Nothing after `to` (a sign-in 20 s after a jittered failure could land there): events never come from the future.
+  return out.filter((d) => Date.parse(d.occurred_at) <= to.getTime()).sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
 }
 
 /**
@@ -176,7 +177,7 @@ export function scenario(key: ScenarioKey, t0: Date, r: Rng): Draft[] {
       const victim = byName("Ethan");
       const s = src(ip(2), ATTACK_AGENT);
       const fails = Array.from({ length: 6 }, (_, i) => draft("auth.login_failed", at(t0, i * 20), anonymous, { ...s, request_id: randomUUID() }, { type: "account", id: victim.id }, { account_key: victim.accountKey, known_account: true, reason: "invalid_credentials" }));
-      return [...fails, draft("auth.login_succeeded", at(t0, 150), anonymous, { ...s, request_id: randomUUID() }, { type: "account", id: victim.id }, { account_key: victim.accountKey, user_id: victim.id })];
+      return [...fails, draft("auth.login_succeeded", at(t0, 150), userActor(victim), { ...s, request_id: randomUUID() }, { type: "account", id: victim.id }, { account_key: victim.accountKey, user_id: victim.id })];
     }
     case "idor_probing": {
       const rep = byName("Daniel");

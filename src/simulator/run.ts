@@ -17,6 +17,18 @@ async function append(sql: Sql, drafts: Draft[]): Promise<IngestResult> {
   return ingestEvents(sql, "simulator", events);
 }
 
+/**
+ * Moves a scenario so its last event happens at `end`. Scenarios are written forward from their
+ * start time; run as-is from "now" they would contain events from the next few minutes.
+ */
+export function endingAt(drafts: Draft[], end: Date): Draft[] {
+  if (drafts.length === 0) return drafts;
+  const last = Math.max(...drafts.map((d) => Date.parse(d.occurred_at)));
+  const shift = end.getTime() - last;
+  if (shift >= 0) return drafts;
+  return drafts.map((d) => ({ ...d, occurred_at: new Date(Date.parse(d.occurred_at) + shift).toISOString() }));
+}
+
 /** Most recent time before `now` that is outside working hours (02:30 UTC). */
 function lastNight(now: Date): Date {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 30));
@@ -50,7 +62,7 @@ export async function backfill(sql: Sql, now: Date, days = 3): Promise<{ events:
     ["forgery", new Date(now.getTime() - 0.08 * DAY)],
     ["log_tampering", new Date(now.getTime() - 0.03 * DAY)],
   ];
-  for (const [key, t] of plan) drafts.push(...scenario(key, t, r));
+  for (const [key, t] of plan) drafts.push(...scenario(key, t, r).filter((d) => Date.parse(d.occurred_at) <= now.getTime()));
   drafts.sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
   // Keep chain-tampering drafts adjacent so the gap and break land where planned.
   const result = await append(sql, drafts);
@@ -78,8 +90,9 @@ export async function tick(sql: Sql, now: Date): Promise<number> {
 /** Runs one attack scenario now (Settings → Simulator). */
 export async function runScenario(sql: Sql, key: ScenarioKey, now: Date): Promise<IngestResult> {
   const r = rng(Math.floor(now.getTime() / 1000));
-  const drafts = key === "data_exfiltration" ? [...exportHistory(now, 4), ...scenario(key, now, r)] : scenario(key, now, r);
-  return append(sql, drafts);
+  const attack = endingAt(scenario(key, now, r), now);
+  const drafts = key === "data_exfiltration" ? [...exportHistory(now, 4), ...attack] : attack;
+  return append(sql, drafts.sort((a, b) => a.occurred_at.localeCompare(b.occurred_at)));
 }
 
 export { SCENARIOS };

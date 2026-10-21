@@ -12,7 +12,7 @@ import { db as getSql } from "./db";
 export const SESSION_COOKIE = "vigil_session";
 const SESSION_HOURS = 12;
 
-export type CurrentUser = { id: string; email: string; name: string; role: "analyst" | "admin" };
+export type CurrentUser = { id: string; email: string; name: string; role: "analyst" | "admin"; must_change_password?: boolean };
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -51,7 +51,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const sql = await getSql();
   const row = (
     await sql.query<CurrentUser>(
-      "select u.id, u.email, u.name, u.role from sessions s join users u on u.id = s.user_id where s.token_hash = $1 and s.expires_at > now() and u.active",
+      "select u.id, u.email, u.name, u.role, u.must_change_password from sessions s join users u on u.id = s.user_id where s.token_hash = $1 and s.expires_at > now() and u.active",
       [tokenHash(token)],
     )
   )[0];
@@ -62,6 +62,8 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // An initial or reset password must be replaced before anything else.
+  if (user.must_change_password) redirect("/account/password?first=1");
   return user;
 }
 

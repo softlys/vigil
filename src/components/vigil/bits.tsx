@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { cn } from "@/lib/utils";
@@ -102,6 +103,41 @@ export function ShortId({ value, className }: { value: string | null; className?
 
 export function first(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
+}
+
+/** "false_positive" → "False positive" for filter options and labels. */
+export function cap(value: string): string {
+  const s = value.replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * A filter value from the URL if it is one of `allowed`. Anything else is dropped (the list is not
+ * filtered by it) and noted in `ignored`, so the page can say so instead of silently showing nothing.
+ */
+export function oneOf(v: string | string[] | undefined, allowed: readonly string[], key: string, ignored: string[]): string | undefined {
+  const value = first(v)?.trim();
+  if (!value) return undefined;
+  if (allowed.includes(value)) return value;
+  ignored.push(`${key}=${value.slice(0, 40)}`);
+  return undefined;
+}
+
+export function IgnoredFilters({ ignored }: { ignored: string[] }) {
+  if (ignored.length === 0) return null;
+  return (
+    <p role="note" className="rounded-md border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning" data-testid="ignored-filters">
+      Ignored unknown filter value{ignored.length === 1 ? "" : "s"}: <span className="font-mono">{ignored.join(", ")}</span>. Showing results without {ignored.length === 1 ? "it" : "them"}.
+    </p>
+  );
+}
+
+/** A page number past the end goes to the last page instead of showing "49901–478 of 478". */
+export function clampPage(page: number, total: number, pageSize: number, base: string, params: Record<string, string | undefined>): void {
+  const last = Math.max(1, Math.ceil(total / pageSize));
+  if (page <= last) return;
+  const query = new URLSearchParams(Object.entries({ ...params, page: last > 1 ? String(last) : undefined }).filter((e): e is [string, string] => Boolean(e[1])));
+  redirect(`${base}${query.size ? `?${query}` : ""}`);
 }
 
 export function pageOf(v: string | string[] | undefined): number {

@@ -91,8 +91,11 @@ export function toneForStatus(status: string): Tone {
   return STATUS_TONES[status] ?? "neutral";
 }
 
+const ACRONYMS = new Set(["api", "id", "url", "ip", "sso", "mfa", "crm"]);
+
 export function humanizeStatus(status: string): string {
-  const label = status.replace(/_/g, " ");
+  const words = status.split("_").map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w));
+  const label = words.join(" ");
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 

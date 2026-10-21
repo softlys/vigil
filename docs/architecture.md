@@ -79,7 +79,7 @@ Ticks, on-demand scenario runs and manual polls share a process lock, so nothing
 
 - **Authentication everywhere.** `proxy.ts` sends requests without a session to `/login`, and every page and action checks the session on the server. Roles are `analyst` and `admin`, and admin-only actions are checked on the server for every call (`server/action.ts`, `requireAdmin`).
 - **Sessions.** A random 256-bit token is stored as SHA-256. The cookie is httpOnly and SameSite=Strict (secure in production). Sessions last 12 hours and end when a user is deactivated.
-- **Passwords.** Stored with scrypt. Sign-in uses the same message for unknown and wrong credentials, a constant-time comparison against a dummy hash, and rate limits per IP and per account (in the database).
+- **Passwords.** Stored with scrypt. Sign-in uses the same message for unknown and wrong credentials and a constant-time comparison against a dummy hash. Each failure slows the next answer; after 5 failures an account is locked for 15 minutes (unknown emails are throttled the same way, so the lock does not reveal which accounts exist), and an IP gets at most 20 attempts in 10 minutes. Passwords set by an admin (new users, resets, the bootstrap admin) must be changed at the next sign-in, and changing a password signs out the user's other sessions.
 - **Mutations.** Server actions check the `Origin` header in addition to SameSite cookies, parse input with strict Zod schemas, and return safe errors with a reference.
 - **Headers.**
   - A per-request **CSP** with a nonce: `script-src 'nonce-…' 'strict-dynamic'`, `frame-ancestors 'none'`, `object-src 'none'`. Inline style attributes are allowed for Radix and Recharts positioning.

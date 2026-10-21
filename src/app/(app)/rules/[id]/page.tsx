@@ -8,6 +8,7 @@ import { getRule, ruleVersions } from "@/lib/rules-store";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/session";
 import { RuleEditor } from "./rule-editor";
+import { VersionHistory } from "./version-history";
 
 export const metadata = { title: "Rule" };
 
@@ -38,7 +39,7 @@ export default async function RulePage({ params }: PageProps<"/rules/[id]">) {
       />
       <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <div className="space-y-4 xl:col-span-2">
-          <RuleEditor id={r.id} initial={formatRule(r)} canEdit={user.role === "admin"} />
+          <RuleEditor key={rule.version} id={r.id} initial={formatRule(r)} canEdit={user.role === "admin"} />
         </div>
         <div className="space-y-4">
           <Panel title="What it detects">
@@ -69,16 +70,12 @@ export default async function RulePage({ params }: PageProps<"/rules/[id]">) {
             {r.tuning && <p className="mt-3 text-xs text-text-muted">Tuning: {r.tuning}</p>}
           </Panel>
           <Panel title="Versions">
-            <ol className="space-y-1.5 text-sm">
-              {versions.map((v) => (
-                <li key={v.version} className="flex justify-between gap-2">
-                  <span>v{v.version}</span>
-                  <span className="text-xs text-text-muted">
-                    {v.changed_by ? users.get(v.changed_by) ?? "unknown" : "built-in"} · {formatDate(v.changed_at)}
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <VersionHistory
+              id={r.id}
+              current={rule.version}
+              canEdit={user.role === "admin"}
+              versions={versions.map((v) => ({ version: v.version, json: formatRule(v.definition), by: v.changed_by ? (users.get(v.changed_by) ?? "deleted user") : "built-in", at: formatDate(v.changed_at) }))}
+            />
           </Panel>
         </div>
       </div>

@@ -30,16 +30,34 @@ export const rangeOf = (v: string | undefined): RangeKey => (v && v in RANGES ? 
 // Overview
 // ---------------------------------------------------------------------------
 
+/** Bucket size per range: per minute for 1h, 30 minutes for 24h, 3 hours for 7d, a day for 30d. */
+export const BUCKET_MINUTES: Record<RangeKey, number> = { "1h": 1, "24h": 30, "7d": 180, "30d": 1440 };
+
+/**
+ * One point per bucket across the whole range, zero where nothing happened, so the chart starts at
+ * the range start and quiet periods show as quiet instead of being skipped.
+ */
+export function fillBuckets<T extends { bucket: string; total: number; failures: number }>(rows: T[], fromMs: number, toMs: number, bucketMinutes: number) {
+  const size = bucketMinutes * 60_000;
+  const byStart = new Map(rows.map((r) => [Math.floor(Date.parse(r.bucket) / size) * size, r]));
+  const out: Array<{ bucket: string; total: number; failures: number }> = [];
+  for (let t = Math.floor(fromMs / size) * size; t <= toMs; t += size) {
+    const r = byStart.get(t);
+    out.push({ bucket: new Date(t).toISOString(), total: r?.total ?? 0, failures: r?.failures ?? 0 });
+  }
+  return out;
+}
+
 export async function overview(sql: Sql, range: RangeKey, now = new Date()) {
   const from = new Date(now.getTime() - RANGES[range]).toISOString();
-  // Bucket size keeps ~60 points: per minute for 1h, coarser for longer ranges.
-  const bucketMinutes = range === "1h" ? 1 : range === "24h" ? 30 : range === "7d" ? 180 : 720;
-  const series = await sql.query<{ bucket: string; total: number; failures: number }>(
+  const bucketMinutes = BUCKET_MINUTES[range];
+  const counted = await sql.query<{ bucket: string; total: number; failures: number }>(
     `select to_timestamp(floor(extract(epoch from occurred_at) / ($2 * 60)) * ($2 * 60)) as bucket,
             count(*)::int as total, count(*) filter (where outcome = 'failure')::int as failures
-     from events where occurred_at >= $1 group by 1 order by 1`,
-    [from, bucketMinutes],
+     from events where occurred_at >= $1 and occurred_at <= $3 group by 1 order by 1`,
+    [from, bucketMinutes, now.toISOString()],
   );
+  const series = fillBuckets(counted, Date.parse(from), now.getTime(), bucketMinutes);
   const [totals] = await sql.query<{ events: number; failures: number; per_minute: number }>(
     "select count(*)::int as events, count(*) filter (where outcome = 'failure')::int as failures, round(count(*)::numeric / greatest(1, extract(epoch from (now() - $1::timestamptz)) / 60), 2)::float as per_minute from events where occurred_at >= $1",
     [from],
@@ -224,8 +242,8 @@ export async function getAlert(sql: Sql, id: string) {
 }
 
 export async function listUsers(sql: Sql) {
-  return sql.query<{ id: string; email: string; name: string; role: "analyst" | "admin"; active: boolean; created_at: string; last_login_at: string | null }>(
-    "select id, email, name, role, active, created_at, last_login_at from users order by created_at",
+  return sql.query<{ id: string; email: string; name: string; role: "analyst" | "admin"; active: boolean; created_at: string; last_login_at: string | null; must_change_password: boolean }>(
+    "select id, email, name, role, active, created_at, last_login_at, must_change_password from users order by created_at",
   );
 }
 

@@ -52,11 +52,11 @@ export function IncidentControls({ incidentId, status, assigneeId, users }: { in
         </Select>
       </FormField>
       {closing && (
-        <FormField id="resolution-note" label="Resolution note" hint="Required when resolving or marking a false positive.">
+        <FormField id="resolution-note" label="Resolution note" hint="Required when resolving or marking a false positive: at least 5 characters.">
           <Textarea id="resolution-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
         </FormField>
       )}
-      <Button onClick={save} disabled={pending || next === status}>
+      <Button onClick={save} disabled={pending || next === status || (closing && note.trim().length < 5)}>
         {pending ? "Saving…" : "Update status"}
       </Button>
       <FormField id="incident-assignee" label="Assignee">
@@ -115,7 +115,9 @@ export function NoteForm({ incidentId }: { incidentId: string }) {
   );
 }
 
-export function ProposeResponse({ incidentId, users, keys }: { incidentId: string; users: string[]; keys: string[] }) {
+type Candidate = { id: string; why: string };
+
+export function ProposeResponse({ incidentId, users, keys, pending: waiting }: { incidentId: string; users: Candidate[]; keys: Candidate[]; pending: string[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const propose = (kind: "revoke_api_key" | "disable_user", target: string) =>
@@ -126,25 +128,47 @@ export function ProposeResponse({ incidentId, users, keys }: { incidentId: strin
       router.refresh();
     });
   if (users.length === 0 && keys.length === 0) return <p className="text-xs text-text-muted">No NEXORA user or API key is involved in this incident.</p>;
+  const option = (kind: "revoke_api_key" | "disable_user", c: Candidate) => {
+    const isWaiting = waiting.includes(`${kind}:${c.id}`);
+    return (
+      <div key={`${kind}:${c.id}`} className="space-y-0.5">
+        <Button variant="outline" size="sm" className="w-full justify-start" disabled={pending || isWaiting} onClick={() => propose(kind, c.id)}>
+          {kind === "revoke_api_key" ? "Revoke API key" : "Disable user"} <span className="truncate font-mono text-[11px]">{c.id}</span>
+        </Button>
+        <p className="px-1 text-[11px] text-text-muted">{isWaiting ? "Already waiting for approval." : `In this incident: ${c.why}.`}</p>
+      </div>
+    );
+  };
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-text-muted">Propose an action</p>
-      {keys.map((k) => (
-        <Button key={k} variant="outline" size="sm" className="w-full justify-start" disabled={pending} onClick={() => propose("revoke_api_key", k)}>
-          Revoke API key <span className="truncate font-mono text-[11px]">{k}</span>
-        </Button>
-      ))}
-      {users.map((u) => (
-        <Button key={u} variant="outline" size="sm" className="w-full justify-start" disabled={pending} onClick={() => propose("disable_user", u)}>
-          Disable user <span className="truncate font-mono text-[11px]">{u}</span>
-        </Button>
-      ))}
+      {keys.map((k) => option("revoke_api_key", k))}
+      {users.map((u) => option("disable_user", u))}
     </div>
   );
 }
 
 /** Admin approval or rejection, always with a reason. */
-export function ResponseDecision({ actionId, incidentId, label, simulated }: { actionId: string; incidentId: string; label: string; simulated: boolean }) {
+const EFFECT = {
+  disable_user: "The NEXORA user is deactivated and signed out everywhere.",
+  revoke_api_key: "The NEXORA API key stops working at once; integrations that use it will fail.",
+} as const;
+
+export function ResponseDecision({
+  actionId,
+  incidentId,
+  kind,
+  label,
+  simulated,
+  ownProposal,
+}: {
+  actionId: string;
+  incidentId: string;
+  kind: keyof typeof EFFECT;
+  label: string;
+  simulated: boolean;
+  ownProposal: boolean;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<"approve" | "reject" | null>(null);
   const [reason, setReason] = useState("");
@@ -164,10 +188,14 @@ export function ResponseDecision({ actionId, incidentId, label, simulated }: { a
       router.refresh();
     });
   return (
-    <div className="mt-2 flex gap-2">
-      <Button size="sm" onClick={() => setMode("approve")}>
-        Approve
-      </Button>
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {ownProposal ? (
+        <p className="w-full text-xs text-warning">You proposed this action, so another admin has to approve it.</p>
+      ) : (
+        <Button size="sm" onClick={() => setMode("approve")}>
+          Approve
+        </Button>
+      )}
       <Button size="sm" variant="outline" onClick={() => setMode("reject")}>
         Reject
       </Button>
@@ -179,11 +207,15 @@ export function ResponseDecision({ actionId, incidentId, label, simulated }: { a
               {mode === "approve"
                 ? simulated
                   ? "This incident is simulated: the action is recorded, but no request is sent to NEXORA."
-                  : "VIGIL calls the NEXORA security-actions API now. This affects real users or integrations."
+                  : `VIGIL calls the NEXORA security-actions API now. ${EFFECT[kind]}`
                 : "The proposed action is closed without running."}
             </DialogDescription>
           </DialogHeader>
-          <FormField id="decision-reason" label="Reason (required)" hint="Stored in the incident timeline and the audit log, and sent to NEXORA with the action.">
+          <FormField
+            id="decision-reason"
+            label="Reason (required)"
+            hint={mode === "approve" ? "At least 5 characters. Stored in the incident timeline and the audit log, and sent to NEXORA with the action." : "At least 5 characters. Stored in the incident timeline and the audit log."}
+          >
             <Textarea id="decision-reason" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
           </FormField>
           <DialogFooter>
