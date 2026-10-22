@@ -29,14 +29,14 @@ export function Nav({ openIncidents, isAdmin }: { openIncidents: number; isAdmin
             href={href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex shrink-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap text-text-subtle hover:bg-surface-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
-              active && "bg-surface-muted font-medium text-foreground",
+              "flex shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm whitespace-nowrap text-sidebar-muted transition-colors hover:bg-sidebar-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none",
+              active && "bg-brand font-medium text-brand-foreground shadow-md shadow-brand/30 hover:bg-brand hover:text-brand-foreground",
             )}
           >
             <Icon className="size-4" aria-hidden />
             {label}
             {href === "/incidents" && openIncidents > 0 && (
-              <span className="ml-auto rounded-full bg-danger-bg px-1.5 text-[11px] font-medium text-danger tabular-nums" aria-label={`${openIncidents} open incidents`}>
+              <span className={cn("ml-auto rounded-full px-1.5 text-[11px] font-semibold tabular-nums", active ? "bg-white/20 text-white" : "bg-danger-solid text-white")} aria-label={`${openIncidents} open incidents`}>
                 {openIncidents}
               </span>
             )}

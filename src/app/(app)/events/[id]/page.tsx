@@ -88,18 +88,46 @@ export default async function EventPage({ params }: PageProps<"/events/[id]">) {
             </ul>
           </Panel>
           <Panel title="Chain position" description={e.chain_ok ? "Verified on ingest: sequence, link and hash." : "This event failed verification on ingest."}>
-            <ol className="space-y-1.5">
-              {neighbours.map((nb) => (
-                <li key={nb.id} className={`rounded-md border p-2 text-xs ${nb.id === e.id ? "border-brand" : "border-border"}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <Link href={`/events/${nb.id}`} className="font-medium hover:underline">
-                      #{nb.sequence} {nb.action}
-                    </Link>
-                    {nb.chain_ok ? <StatusBadge tone="success" label="ok" /> : <StatusBadge tone="danger" label="broken" />}
+            <ul className="mb-3 grid grid-cols-3 gap-1.5 text-[11px]">
+              {[
+                ["Sequence", e.chain_ok],
+                ["Link", e.chain_ok],
+                ["Hash", e.chain_ok],
+              ].map(([label, ok]) => (
+                <li key={String(label)} className={`flex items-center justify-between rounded-md border px-2 py-1 ${ok ? "border-success-border bg-success-bg text-success" : "border-danger-border bg-danger-bg text-danger"}`}>
+                  {label} <span className="font-semibold">{ok ? "PASS" : "FAIL"}</span>
+                </li>
+              ))}
+            </ul>
+            <ol>
+              {neighbours.map((nb, i) => (
+                <li key={nb.id}>
+                  {i > 0 && <div className={`ml-5 h-2.5 border-l-2 ${nb.chain_ok ? "border-success/60" : "border-danger/70"}`} aria-hidden />}
+                  <div className={`rounded-lg border p-2.5 text-xs ${nb.id === e.id ? "border-brand bg-brand-subtle/30" : "border-border bg-surface-subtle"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="rounded-md bg-brand px-1.5 py-0.5 font-semibold text-brand-foreground tabular-nums">#{nb.sequence}</span>
+                        <Link href={`/events/${nb.id}`} className="truncate font-medium hover:underline">
+                          {nb.action}
+                        </Link>
+                      </span>
+                      <span className={`text-[11px] font-semibold ${nb.chain_ok ? "text-success" : "text-danger"}`}>{nb.chain_ok ? "VALID" : "BROKEN"}</span>
+                    </div>
+                    <dl className="mt-1.5 grid grid-cols-2 gap-2 font-mono text-[10px]">
+                      <div className="min-w-0">
+                        <dt className="tracking-wider text-text-muted uppercase">Hash</dt>
+                        <dd className="truncate text-info" title={nb.hash}>
+                          sha256:{nb.hash.slice(0, 10)}
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="tracking-wider text-text-muted uppercase">Previous</dt>
+                        <dd className="truncate text-text-subtle" title={nb.prev_hash}>
+                          sha256:{nb.prev_hash.slice(0, 10)}
+                        </dd>
+                      </div>
+                    </dl>
                   </div>
-                  <p className="mt-1 truncate font-mono text-[10px] text-text-muted" title={nb.hash}>
-                    hash {nb.hash.slice(0, 16)}… ← prev {nb.prev_hash.slice(0, 16)}…
-                  </p>
                 </li>
               ))}
             </ol>

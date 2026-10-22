@@ -101,6 +101,21 @@ VIGIL is the security-monitoring companion to NEXORA (prompt 5), in its own repo
 - README: what VIGIL is and is not, architecture diagram, screenshots, setup, demo mode, connecting to NEXORA.
 - `docs/`: architecture, event-schema, detection-rules, response, drill, deployment, limitations.
 
+### Redesign from the SOC reference (2026-10-22)
+
+- **Tokens**: orange SOC accent (#f97316), navy surfaces and sidebar, radii 8/12/16 px.
+- **Overview → "Security Operations Center"**:
+  - severity pills with open-alert counts;
+  - KPI cards with icons and sparklines;
+  - 7-day × 24-hour activity heatmap;
+  - priority incidents;
+  - security posture score — explainable: 100 minus listed deductions (`src/lib/posture.ts`, unit-tested);
+  - monitoring component tiles: connector, worker, rules, integrity, notifications, response, simulator;
+  - median time to detect and time to resolve;
+  - the events chart and the existing breakdowns.
+- **Event page**: chain checks (sequence, link, hash) and the neighbouring entries as hash-linked cards.
+- **Fresh checkout fix (found by CI)**: the embedded database now creates missing parent directories (`.data/`), so a clean clone starts without manual steps.
+
 ### Stage 1 hardening (2026-10-22)
 
 From the platform audit (section F):

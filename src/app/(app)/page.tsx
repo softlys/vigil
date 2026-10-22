@@ -1,8 +1,12 @@
+import { Activity, Link2, ShieldAlert, Siren, Timer, XOctagon } from "lucide-react";
 import Link from "next/link";
 import { KpiCard } from "@/components/patterns/kpi-card";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Empty, first, PageTitle, Panel, RangeLinks, ShortId } from "@/components/vigil/bits";
 import { EventsChart } from "@/components/vigil/events-chart";
+import { ActivityHeatmap, ComponentGrid, IncidentList, minutes, PostureCard, SeverityPills, type Component } from "@/components/vigil/soc";
+import { channels } from "@/lib/notify";
+import { postureScore } from "@/lib/posture";
 import { connectorConfigured, getConfig } from "@/lib/config";
 import { formatNumber, formatRelative } from "@/lib/format";
 import { db } from "@/server/db";
@@ -58,29 +62,92 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   const openIncidents = o.incidents.filter((i) => !["resolved", "false_positive"].includes(i.status)).reduce((a, b) => a + b.n, 0);
   const integrityProblems = o.status.sources.reduce((n, s) => n + s.findings.reduce((m, f) => m + f.n, 0), 0);
 
+  const incidentSev = Object.fromEntries(o.openIncidentsBySeverity.map((s) => [s.severity, s.n])) as Record<string, number>;
+  const connector = o.status.connector;
+  const connectorFailing = connectorConfigured(config) && Boolean(connector.stopped_reason || (connector.last_error && connector.consecutive_failures > 0));
+  const posture = postureScore({ openIncidents: incidentSev, integrityFindings24h: o.integrity24h, rulesDisabled: o.rules.total - o.rules.enabled, connectorFailing });
+  const workerAge = o.status.worker ? Math.round((Date.parse(o.now) - Date.parse(o.status.worker.updated_at)) / 1000) : null;
+  const configuredChannels = channels().filter((c) => c.configured).length;
+  const components: Component[] = [
+    {
+      key: "connector",
+      name: "NEXORA connector",
+      detail: !connectorConfigured(config) ? "Set NEXORA_URL and a read key" : connector.last_success_at ? `Last poll ${formatRelative(connector.last_success_at)}` : "Waiting for the first poll",
+      state: !connectorConfigured(config) ? "off" : connectorFailing ? "fail" : "ok",
+      href: "/settings",
+    },
+    { key: "worker", name: "Worker", detail: workerAge === null ? "Not started yet" : `Last run ${age(workerAge)}`, state: workerAge === null ? "warn" : workerAge > 120 ? "fail" : "ok" },
+    { key: "rules", name: "Detection rules", detail: `${o.rules.enabled} of ${o.rules.total} enabled`, state: o.rules.enabled === o.rules.total ? "ok" : "warn", href: "/rules" },
+    { key: "integrity", name: "Integrity checks", detail: o.integrity24h ? `${o.integrity24h} finding${o.integrity24h === 1 ? "" : "s"} in 24 h` : "Chain, gaps, heartbeat", state: o.integrity24h ? "fail" : "ok", href: "/alerts?rule=VGL-015" },
+    { key: "notifications", name: "Notifications", detail: configuredChannels ? `${configuredChannels} channel${configuredChannels === 1 ? "" : "s"} configured` : "Email, Slack or webhook", state: configuredChannels ? "ok" : "off", href: "/settings" },
+    { key: "response", name: "Response", detail: config.nexora.respondKey ? "2 playbooks · approval required" : "Respond key not set", state: config.nexora.respondKey ? "ok" : "off" },
+    ...(config.simulator ? [{ key: "simulator", name: "Simulator", detail: "Demo traffic and attacks", state: "warn" as const, href: "/settings" }] : []),
+  ];
+
   return (
     <>
       <PageTitle
-        title="Overview"
+        title="Security Operations Center"
         description="Computed from the stored events, alerts and incidents. Simulated and real NEXORA events are both counted; filter by source in Events."
-        actions={<RangeLinks current={range} base="/" params={{}} />}
+        actions={
+          <>
+            <SeverityPills counts={sev} />
+            <RangeLinks current={range} base="/" params={{}} />
+          </>
+        }
       />
 
       <section aria-label="Key figures" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <KpiCard label={`Events (${range})`} value={formatNumber(o.totals.events)} hint={`${o.totals.per_minute} per minute`} href={`/events?range=${range}`} />
-        <KpiCard label="Failures" value={formatNumber(o.totals.failures)} hint="Outcome failure" href={`/events?range=${range}&outcome=failure`} />
-        <KpiCard label="Open alerts" value={formatNumber(openAlerts)} hint={`${sev.critical ?? 0} critical · ${sev.high ?? 0} high`} href="/alerts?status=open" />
-        <KpiCard label="Open incidents" value={formatNumber(openIncidents)} hint="New, triaged or investigating" href="/incidents?status=open" />
-        <KpiCard label="Integrity findings" value={formatNumber(integrityProblems)} hint="Chain, gaps, heartbeat, schema" href="/alerts?rule=VGL-015" />
+        <KpiCard label={`Events (${range})`} icon={Activity} tone="info" spark={o.series.map((p) => p.total)} value={formatNumber(o.totals.events)} hint={`${o.totals.per_minute} per minute`} href={`/events?range=${range}`} />
+        <KpiCard label="Failures" icon={XOctagon} tone="danger" spark={o.series.map((p) => p.failures)} value={formatNumber(o.totals.failures)} hint="Outcome failure" href={`/events?range=${range}&outcome=failure`} />
+        <KpiCard label="Open alerts" icon={ShieldAlert} tone="warning" value={formatNumber(openAlerts)} hint={`${sev.critical ?? 0} critical · ${sev.high ?? 0} high`} href="/alerts?status=open" />
+        <KpiCard label="Open incidents" icon={Siren} tone="brand" value={formatNumber(openIncidents)} hint="New, triaged or investigating" href="/incidents?status=open" />
+        <KpiCard label="Integrity findings" icon={Link2} tone={integrityProblems ? "danger" : "success"} value={formatNumber(integrityProblems)} hint="Chain, gaps, heartbeat, schema" href="/alerts?rule=VGL-015" />
       </section>
+
+      <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
+        <Panel title="Activity heatmap" description="Events per hour over the last 7 days (UTC). Darker means more events." className="xl:col-span-2">
+          <ActivityHeatmap cells={o.heatmap} now={new Date(o.now)} />
+        </Panel>
+        <Panel title="Priority incidents" description="Open, most severe first" actions={<Link href="/incidents?status=open" className="text-xs text-brand hover:underline">All incidents</Link>}>
+          <IncidentList rows={o.recentIncidents} />
+        </Panel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
+        <Panel title="Security posture" description="An explainable score, not a model">
+          <PostureCard posture={posture} />
+        </Panel>
+        <Panel title="Monitoring components" description="What VIGIL relies on, and whether it is working" className="xl:col-span-2">
+          <ComponentGrid items={components} />
+        </Panel>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <div className="xl:col-span-2">
           <EventsChart data={o.series} bucketMinutes={o.bucketMinutes} />
         </div>
-        <Panel title="Open alerts by severity">
-          <Bars rows={SEVERITIES.map((s) => ({ key: s, label: <StatusBadge status={s} dot />, value: sev[s] ?? 0 }))} href={(s) => `/alerts?status=open&severity=${s}`} />
-        </Panel>
+        <div className="grid gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+              <p className="flex items-center justify-between text-sm text-text-subtle">
+                Time to detect <Timer className="size-4 text-info" aria-hidden />
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">{minutes(o.timing.mttd)}</p>
+              <p className="text-xs text-text-muted">Median, first event to alert · {o.timing.detected} alerts</p>
+            </div>
+            <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+              <p className="flex items-center justify-between text-sm text-text-subtle">
+                Time to resolve <Timer className="size-4 text-brand" aria-hidden />
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">{minutes(o.timing.mttr)}</p>
+              <p className="text-xs text-text-muted">Median, opened to resolved · {o.timing.resolved} incidents</p>
+            </div>
+          </div>
+          <Panel title="Open alerts by severity">
+            <Bars rows={SEVERITIES.map((s) => ({ key: s, label: <StatusBadge status={s} dot />, value: sev[s] ?? 0 }))} href={(s) => `/alerts?status=open&severity=${s}`} />
+          </Panel>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">

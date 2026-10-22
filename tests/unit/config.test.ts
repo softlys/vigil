@@ -40,3 +40,18 @@ describe("production bootstrap", () => {
     await sql.close();
   });
 });
+
+describe("embedded database on a fresh checkout", () => {
+  it("creates missing parent directories for the data directory", async () => {
+    const { mkdtempSync, rmSync, existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    const { openSql } = await import("@/lib/db");
+    const root = mkdtempSync(join(tmpdir(), "vigil-fresh-"));
+    const dir = join(root, "missing", "parent", "pglite");
+    const sql = await openSql({ dataDir: dir });
+    expect(existsSync(dir)).toBe(true);
+    await sql.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+});

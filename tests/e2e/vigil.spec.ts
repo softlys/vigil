@@ -7,7 +7,7 @@ async function login(page: Page, email: string) {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Security Operations Center" })).toBeVisible();
 }
 
 /** The worker backfills the simulated history on first start; wait until incidents exist. */
@@ -155,6 +155,6 @@ test.describe("VIGIL", () => {
     await page.getByLabel("New password", { exact: true }).fill("my-own-password-42");
     await page.getByLabel("Repeat the new password").fill("my-own-password-42");
     await page.getByRole("button", { name: "Change password" }).click();
-    await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Security Operations Center" })).toBeVisible();
   });
 });

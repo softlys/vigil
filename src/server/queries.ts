@@ -76,7 +76,48 @@ export async function overview(sql: Sql, range: RangeKey, now = new Date()) {
     [from],
   );
   const incidents = await sql.query<{ status: string; n: number }>("select status, count(*)::int as n from incidents group by status");
-  return { from, bucketMinutes, series, totals: totals!, openBySeverity, topRules, topIps, topActors, incidents, status: await systemStatus(sql, now) };
+  const recentIncidents = await sql.query<{ id: string; title: string; severity: string; status: string; updated_at: string; simulated: boolean; alert_count: number }>(
+    `select i.id, i.title, i.severity, i.status, i.updated_at, i.simulated, (select count(*)::int from alerts a where a.incident_id = i.id) as alert_count
+     from incidents i where i.status not in ('resolved', 'false_positive')
+     order by case i.severity when 'critical' then 4 when 'high' then 3 when 'medium' then 2 else 1 end desc, i.updated_at desc limit 5`,
+  );
+  // Events per day and hour over the last 7 days (UTC), for the activity heatmap.
+  const heatmap = await sql.query<{ day: string; hour: number; n: number; failures: number }>(
+    `select to_char(date_trunc('day', occurred_at at time zone 'UTC'), 'YYYY-MM-DD') as day, extract(hour from occurred_at at time zone 'UTC')::int as hour,
+            count(*)::int as n, count(*) filter (where outcome = 'failure')::int as failures
+     from events where occurred_at >= $1 group by 1, 2`,
+    [new Date(Date.parse(now.toISOString().slice(0, 10)) - 6 * 86_400_000).toISOString()],
+  );
+  // Median minutes from the first matching event to the alert (detect), and from incident opened to resolved (respond).
+  const [timing] = await sql.query<{ mttd: number | null; mttr: number | null; detected: number; resolved: number }>(
+    `select (select percentile_cont(0.5) within group (order by extract(epoch from (created_at - first_seen_at)) / 60) from alerts where created_at >= $1)::float as mttd,
+            (select percentile_cont(0.5) within group (order by extract(epoch from (resolved_at - created_at)) / 60) from incidents where resolved_at >= $1)::float as mttr,
+            (select count(*)::int from alerts where created_at >= $1) as detected,
+            (select count(*)::int from incidents where resolved_at >= $1) as resolved`,
+    [from],
+  );
+  const [rules] = await sql.query<{ enabled: number; total: number }>("select count(*) filter (where enabled)::int as enabled, count(*)::int as total from rules");
+  const openIncidentsBySeverity = await sql.query<{ severity: string; n: number }>("select severity, count(*)::int as n from incidents where status not in ('resolved', 'false_positive') group by severity");
+  const [integrity] = await sql.query<{ n: number }>("select count(*)::int as n from integrity_findings where detected_at >= $1", [new Date(now.getTime() - 86_400_000).toISOString()]);
+  return {
+    from,
+    bucketMinutes,
+    series,
+    totals: totals!,
+    openBySeverity,
+    topRules,
+    topIps,
+    topActors,
+    incidents,
+    recentIncidents,
+    heatmap,
+    timing: timing!,
+    rules: rules!,
+    openIncidentsBySeverity,
+    integrity24h: integrity!.n,
+    now: now.toISOString(),
+    status: await systemStatus(sql, now),
+  };
 }
 
 export async function systemStatus(sql: Sql, now = new Date()) {

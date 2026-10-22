@@ -6,8 +6,8 @@
  * Both parse bigint to number and timestamptz to ISO strings, so code never sees driver differences.
  * Migrations in db/migrations run once on first use.
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 export interface Sql {
   readonly kind: "pglite" | "postgres";
@@ -26,6 +26,8 @@ const toIso = (v: string) => new Date(v).toISOString();
 
 async function pgliteSql(dataDir: string | undefined): Promise<Sql> {
   const { PGlite } = await import("@electric-sql/pglite");
+  // PGlite creates its own directory but not missing parents (a fresh checkout has no .data/).
+  if (dataDir) mkdirSync(dirname(dataDir), { recursive: true });
   const db = new PGlite(dataDir, { parsers: { [INT8]: (v: string) => Number(v), [TIMESTAMPTZ]: toIso, [NUMERIC]: (v: string) => Number(v) } });
   await db.waitReady;
   const wrap = (q: { query: typeof db.query; exec: typeof db.exec }, inTx: boolean): Sql => ({

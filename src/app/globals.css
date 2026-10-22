@@ -64,6 +64,8 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   /* NEXORA semantic colors */
+  --color-sidebar-muted: var(--nx-sidebar-muted);
+  --color-sidebar-hover: var(--nx-sidebar-hover);
   --color-surface: var(--nx-surface);
   --color-surface-subtle: var(--nx-surface-subtle);
   --color-surface-muted: var(--nx-surface-muted);
@@ -128,12 +130,12 @@
   --chart-4: var(--nx-chart-4);
   --chart-5: var(--nx-chart-5);
   --sidebar: var(--nx-sidebar);
-  --sidebar-foreground: var(--nx-foreground);
+  --sidebar-foreground: var(--nx-sidebar-foreground);
   --sidebar-primary: var(--nx-accent);
   --sidebar-primary-foreground: var(--nx-accent-foreground);
-  --sidebar-accent: var(--nx-surface-muted);
-  --sidebar-accent-foreground: var(--nx-foreground);
-  --sidebar-border: var(--nx-border);
+  --sidebar-accent: var(--nx-sidebar-hover);
+  --sidebar-accent-foreground: var(--nx-sidebar-foreground);
+  --sidebar-border: var(--nx-sidebar-border);
   --sidebar-ring: var(--nx-ring);
 }
 
