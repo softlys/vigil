@@ -17,7 +17,7 @@ The embedded database (PGlite) is for demos and development only. Only one proce
 All variables are listed with comments in `.env.example`. The essentials for production:
 
 ```bash
-VIGIL_MODE=production                 # no simulator, no demo accounts
+VIGIL_MODE=production                 # required on servers; no simulator, demo accounts deactivated
 DATABASE_URL=postgres://…
 VIGIL_ADMIN_EMAIL=… VIGIL_ADMIN_PASSWORD=…   # first admin (12+ chars), only when no users exist
 VIGIL_PUBLIC_URL=https://vigil.example.com

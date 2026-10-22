@@ -33,6 +33,14 @@ export async function bootstrap(sql: Sql): Promise<{ users: number; rules: numbe
     await sql.query("insert into settings (key, value) values ($1, $2) on conflict (key) do nothing", [key, JSON.stringify(value)]);
   }
   let users = 0;
+  if (config.mode === "production") {
+    // Demo accounts have a published password: they never stay usable in production mode.
+    const disabled = await sql.query("update users set active = false where email = any($1::text[]) and active returning id", [DEMO_USERS.map((u) => u.email)]);
+    if (disabled.length) {
+      await sql.query("delete from sessions where user_id = any($1::uuid[])", [disabled.map((r) => (r as { id: string }).id)]);
+      console.warn(`[vigil] Production mode: deactivated ${disabled.length} demo account(s).`);
+    }
+  }
   const existing = (await sql.query<{ n: number }>("select count(*)::int as n from users"))[0]!.n;
   if (existing === 0) {
     if (config.mode === "demo") {

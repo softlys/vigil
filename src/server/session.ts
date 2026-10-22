@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { forbidden, redirect } from "next/navigation";
 import { cache } from "react";
 import { db as getSql } from "./db";
+import { clientIp } from "@/lib/client-ip";
 
 /**
  * Sessions: a random 256-bit token in an httpOnly, SameSite=Strict cookie; only its SHA-256 is
@@ -18,8 +19,7 @@ const tokenHash = (token: string) => createHash("sha256").update(token).digest("
 
 export async function requestMeta(): Promise<{ ip: string | null; userAgent: string | null }> {
   const h = await headers();
-  const fwd = h.get("x-forwarded-for");
-  return { ip: fwd ? fwd.split(",")[0]!.trim() : h.get("x-real-ip"), userAgent: h.get("user-agent")?.slice(0, 300) ?? null };
+  return { ip: clientIp(h.get("x-forwarded-for"), h.get("x-real-ip")), userAgent: h.get("user-agent")?.slice(0, 300) ?? null };
 }
 
 export async function createSession(userId: string): Promise<void> {

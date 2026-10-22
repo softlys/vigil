@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { audit } from "@/lib/audit";
+import { clientIp } from "@/lib/client-ip";
 import { getConfig } from "@/lib/config";
 import { getSql } from "@/lib/db";
 import { ingestEvents, parseEvents, SchemaMismatchError } from "@/lib/ingest";
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
   const secret = getConfig().ingestSecret;
   if (!secret) return Response.json({ error: "The push receiver is disabled. Set VIGIL_INGEST_SECRET." }, { status: 503 });
   const sql = await getSql();
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = clientIp(request.headers.get("x-forwarded-for"), request.headers.get("x-real-ip")) ?? "unknown";
   const limit = await hitLimit(sql, "ingest", ip);
   if (!limit.allowed) return Response.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } });
 

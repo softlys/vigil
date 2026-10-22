@@ -37,6 +37,15 @@ export async function proposeResponse(sql: Sql, input: { incidentId: string; kin
   if (!UUID.test(input.targetId)) throw new ResponseError("The target must be a NEXORA user or API key id (UUID).");
   const incident = (await sql.query<{ id: string; simulated: boolean; status: string }>("select id, simulated, status from incidents where id = $1", [input.incidentId]))[0];
   if (!incident) throw new ResponseError("Incident not found.");
+  // Only accounts and keys that appear in this incident's events can be acted on from it.
+  const events = await sql.query<{ actor_type: string; actor_id: string | null; target_type: string | null; target_id: string | null; action: string }>(
+    `select actor_type, actor_id, target_type, target_id, action from events
+     where id in (select (jsonb_array_elements_text(event_ids))::bigint from alerts where incident_id = $1)`,
+    [input.incidentId],
+  );
+  const candidates = responseCandidates(events);
+  const allowed = (input.kind === "revoke_api_key" ? candidates.keys : candidates.users).some((c) => c.id === input.targetId);
+  if (!allowed) throw new ResponseError(`This ${input.kind === "revoke_api_key" ? "API key" : "user"} does not appear in the incident's events, so it cannot be acted on from this incident.`);
   const pending = await sql.query("select 1 from response_actions where incident_id = $1 and kind = $2 and target_id = $3 and status = 'proposed'", [input.incidentId, input.kind, input.targetId]);
   if (pending.length) throw new ResponseError("This action is already waiting for approval.");
   const id = randomUUID();
@@ -87,6 +96,7 @@ export async function approveResponse(
   if (action.status !== "proposed") throw new ResponseError(`This action was already ${action.status}.`);
   // Four eyes: the person who proposed an action cannot also approve it.
   if (action.proposed_by === input.admin.id) throw new ResponseError("You proposed this action, so another admin has to approve it.");
+  await claim(sql, action.id, input.admin.id);
   const playbook = PLAYBOOKS[action.kind];
   const config = input.config ?? getConfig();
   const requestBody = { [playbook.field]: action.target_id, reason: `${reason} (VIGIL incident ${action.incident_id})` };
@@ -112,7 +122,7 @@ export async function approveResponse(
   }
 
   await sql.tx(async (q) => {
-    await q.query("update response_actions set status = $2, decided_by = $3, decided_at = now(), reason = $4, request_summary = $5, response_summary = $6 where id = $1", [
+    await q.query("update response_actions set status = $2, decided_by = $3, decided_at = now(), reason = $4, request_summary = $5, response_summary = $6 where id = $1 and status = 'proposed'", [
       action.id,
       status,
       input.admin.id,
@@ -132,14 +142,25 @@ export async function approveResponse(
   return { status, simulated: action.simulated };
 }
 
+/**
+ * Takes the decision on a proposed action, atomically: of two admins deciding at the same moment,
+ * one gets it and the other is told it is already being decided. The claim is the `decided_by`
+ * column on a still-proposed action; the final status is written when the decision completes.
+ */
+async function claim(sql: Sql, actionId: string, adminId: string) {
+  const taken = await sql.query("update response_actions set decided_by = $2, decided_at = now() where id = $1 and status = 'proposed' and decided_by is null returning id", [actionId, adminId]);
+  if (taken.length === 0) throw new ResponseError("Another admin is deciding on this action right now. Refresh the incident.");
+}
+
 export async function rejectResponse(sql: Sql, input: { actionId: string; reason: string; admin: NonNullable<AuditActor> }): Promise<void> {
   const reason = input.reason.trim();
   if (reason.length < 5) throw new ResponseError("Give a reason of at least 5 characters.");
   const action = (await sql.query<ActionRow>("select * from response_actions where id = $1", [input.actionId]))[0];
   if (!action) throw new ResponseError("Response action not found.");
   if (action.status !== "proposed") throw new ResponseError(`This action was already ${action.status}.`);
+  await claim(sql, action.id, input.admin.id);
   await sql.tx(async (q) => {
-    await q.query("update response_actions set status = 'rejected', decided_by = $2, decided_at = now(), reason = $3 where id = $1", [action.id, input.admin.id, reason]);
+    await q.query("update response_actions set status = 'rejected', decided_by = $2, decided_at = now(), reason = $3 where id = $1 and status = 'proposed'", [action.id, input.admin.id, reason]);
     await q.query("insert into incident_timeline (incident_id, kind, actor_id, body, data) values ($1, 'response', $2, $3, $4)", [
       action.incident_id,
       input.admin.id,

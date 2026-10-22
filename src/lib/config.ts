@@ -17,10 +17,26 @@ export type VigilConfig = {
 
 const bool = (v: string | undefined, fallback: boolean) => (v === undefined || v === "" ? fallback : ["1", "true", "on", "yes"].includes(v.toLowerCase()));
 
+export class ConfigError extends Error {}
+
+/**
+ * The mode must be explicit on a production server: a forgotten VIGIL_MODE must not start the demo
+ * (seeded accounts whose password is printed on the sign-in page). `next build` is exempt.
+ */
+function resolveMode(env: NodeJS.ProcessEnv): VigilConfig["mode"] {
+  const explicit = env.VIGIL_MODE?.trim();
+  if (explicit === "production" || explicit === "demo") return explicit;
+  if (explicit) throw new ConfigError(`Unknown VIGIL_MODE "${explicit}". Use production or demo.`);
+  if (env.NODE_ENV === "production" && env.NEXT_PHASE !== "phase-production-build") {
+    throw new ConfigError("VIGIL_MODE is not set. On a server set VIGIL_MODE=production (or VIGIL_MODE=demo for a demo installation).");
+  }
+  return "demo";
+}
+
 export function getConfig(env: NodeJS.ProcessEnv = process.env): VigilConfig {
   const url = env.NEXORA_URL?.trim() || null;
   const readKey = env.NEXORA_SECURITY_API_KEY?.trim() || null;
-  const mode = env.VIGIL_MODE === "production" ? "production" : "demo";
+  const mode = resolveMode(env);
   const database = env.DATABASE_URL ? "postgres" : "pglite";
   return {
     mode,

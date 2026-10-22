@@ -101,6 +101,17 @@ VIGIL is the security-monitoring companion to NEXORA (prompt 5), in its own repo
 - README: what VIGIL is and is not, architecture diagram, screenshots, setup, demo mode, connecting to NEXORA.
 - `docs/`: architecture, event-schema, detection-rules, response, drill, deployment, limitations.
 
+### Stage 1 hardening (2026-10-22)
+
+From the platform audit (section F):
+- **VG-001** `VIGIL_MODE` is required when `NODE_ENV=production`; production mode deactivates the demo accounts and ends their sessions.
+- **VG-002** Approve and reject claim the decision atomically: of two admins deciding at once, exactly one wins (test).
+- **VG-003** A response can target only accounts and keys that appear in the incident's events.
+- **INT-001** Client IPs honor `VIGIL_TRUSTED_PROXY_HOPS` (default 1).
+- **OPS-001** GitHub Actions CI; **OPS-005** shadcn CLI moved to devDependencies (`npm audit --omit=dev`: 0).
+
+Verified: 64 unit tests, 6 e2e tests, lint and typecheck pass.
+
 ### QA fixes (2026-10-21)
 
 From the manual QA report (25 items):
