@@ -8,10 +8,17 @@ import { formatDate } from "@/lib/format";
 import { PLAYBOOKS, responseCandidates } from "@/lib/response";
 import { db } from "@/server/db";
 import { getIncident, listUsers } from "@/server/queries";
-import { requireUser } from "@/server/session";
+import type { Metadata } from "next";
+import { getCurrentUser, requireUser } from "@/server/session";
 import { IncidentControls, NoteForm, ProposeResponse, ResponseDecision } from "./controls";
 
-export const metadata = { title: "Incident" };
+/** The tab shows the incident title (only to signed-in users; the page itself requires a session). */
+export async function generateMetadata({ params }: PageProps<"/incidents/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  if (!(await getCurrentUser()) || !UUID.test(id)) return { title: "Incident" };
+  const data = await getIncident(await db(), id);
+  return { title: data ? `${data.incident.title} · Incident` : "Incident" };
+}
 
 const UUID = /^[0-9a-f-]{36}$/i;
 

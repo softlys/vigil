@@ -101,6 +101,16 @@ VIGIL is the security-monitoring companion to NEXORA (prompt 5), in its own repo
 - README: what VIGIL is and is not, architecture diagram, screenshots, setup, demo mode, connecting to NEXORA.
 - `docs/`: architecture, event-schema, detection-rules, response, drill, deployment, limitations.
 
+### Full testing pass (2026-10-22)
+
+Fixed, with tests:
+- **Account enumeration.** Unknown emails were locked after 8 attempts with a constant delay; real accounts after 5 with a growing delay, so behavior revealed which accounts exist. Both now share one path (`login_failures`, migration 0003); e2e test.
+- **Parallel guessing.** The failure counter was read-then-written; concurrent attempts could lose increments and slip past the lock. It is now an atomic SQL increment.
+- **Tab titles.** Rule, incident and event pages use the record name, for signed-in users only.
+- **Docs.** Run behind a reverse proxy.
+
+Verified: 68 unit tests, 7 e2e tests, lint and typecheck pass.
+
 ### Redesign from the SOC reference (2026-10-22)
 
 - **Tokens**: orange SOC accent (#f97316), navy surfaces and sidebar, radii 8/12/16 px.

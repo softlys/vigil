@@ -157,4 +157,19 @@ test.describe("VIGIL", () => {
     await page.getByRole("button", { name: "Change password" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Security Operations Center" })).toBeVisible();
   });
+
+  test("unknown emails lock after the same number of attempts as real accounts", async ({ page }) => {
+    // Real accounts lock on the 5th failure; an unknown email must too, or the lock reveals which accounts exist.
+    await page.goto("/login");
+    const email = `nobody.${Date.now().toString(36)}@vigil.example`;
+    for (let i = 1; i <= 5; i++) {
+      await page.getByLabel("Email").fill(email);
+      await page.getByLabel("Password").fill(`wrong-password-${i}`);
+      // Wait for this attempt's answer before the next one (the message text repeats).
+      await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/login")), page.getByRole("button", { name: "Sign in" }).click()]);
+      const expected = i < 5 ? "Email or password is incorrect." : "Too many failed attempts.";
+      await expect(page.locator("form [role=alert]")).toContainText(expected);
+    }
+  });
 });
+

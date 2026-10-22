@@ -40,6 +40,8 @@ Keep the respond key out of any environment that does not need it. Rotate both k
 
 ## Production requirements
 
+- **Reverse proxy.** Next.js does not see the TCP peer address; client IPs come from `X-Forwarded-For` as far as `VIGIL_TRUSTED_PROXY_HOPS` proxies vouch for them. Exposed directly, a client can choose its own IP and bypass the per-IP sign-in limit (the per-account lockout still applies).
+
 - **MFA / SSO.** VIGIL has password sign-in only. In production, put it behind an identity-aware proxy or SSO with MFA (for example Cloudflare Access, Google IAP, Azure AD Application Proxy, or oauth2-proxy with your IdP), and restrict network access to the security team.
 - **TLS.** Serve over HTTPS only. VIGIL sends HSTS, a nonce-based CSP with `frame-ancestors 'none'`, `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` and COOP. Session cookies are `Secure` when `NODE_ENV=production`.
 - **Database.**

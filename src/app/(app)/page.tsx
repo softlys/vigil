@@ -105,7 +105,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         <KpiCard label="Integrity findings" icon={Link2} tone={integrityProblems ? "danger" : "success"} value={formatNumber(integrityProblems)} hint="Chain, gaps, heartbeat, schema" href="/alerts?rule=VGL-015" />
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <Panel title="Activity heatmap" description="Events per hour over the last 7 days (UTC). Darker means more events." className="xl:col-span-2">
           <ActivityHeatmap cells={o.heatmap} now={new Date(o.now)} />
         </Panel>
@@ -114,7 +114,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </Panel>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <Panel title="Security posture" description="An explainable score, not a model">
           <PostureCard posture={posture} />
         </Panel>
@@ -123,7 +123,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </Panel>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <div className="xl:col-span-2">
           <EventsChart data={o.series} bucketMinutes={o.bucketMinutes} />
         </div>
@@ -150,7 +150,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 [&>*]:min-w-0">
         <Panel title="Top rules fired" description={`Alerts with activity in the last ${range}`}>
           <Bars rows={o.topRules.map((r) => ({ key: r.rule_id, label: `${r.rule_id} ${r.title}`, value: r.n, sub: `${r.hits} hits` }))} href={(k) => `/alerts?rule=${k}`} />
         </Panel>

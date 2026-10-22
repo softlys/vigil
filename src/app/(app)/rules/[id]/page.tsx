@@ -6,11 +6,17 @@ import { formatRule } from "@/detection/schema";
 import { formatDate } from "@/lib/format";
 import { getRule, ruleVersions } from "@/lib/rules-store";
 import { db } from "@/server/db";
-import { requireUser } from "@/server/session";
+import type { Metadata } from "next";
+import { getCurrentUser, requireUser } from "@/server/session";
 import { RuleEditor } from "./rule-editor";
 import { VersionHistory } from "./version-history";
 
-export const metadata = { title: "Rule" };
+export async function generateMetadata({ params }: PageProps<"/rules/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  if (!(await getCurrentUser()) || !/^[A-Z]{2,5}-\d{3}$/.test(id)) return { title: "Rule" };
+  const rule = await getRule(await db(), id);
+  return { title: rule ? `${rule.id} ${rule.definition.title}` : "Rule" };
+}
 
 export default async function RulePage({ params }: PageProps<"/rules/[id]">) {
   const user = await requireUser();

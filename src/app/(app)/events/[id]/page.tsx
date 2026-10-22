@@ -6,9 +6,15 @@ import { PageTitle, Panel, SeverityBadge, ShortId, SimulatedBadge } from "@/comp
 import { formatDate } from "@/lib/format";
 import { db } from "@/server/db";
 import { getEvent } from "@/server/queries";
-import { requireUser } from "@/server/session";
+import type { Metadata } from "next";
+import { getCurrentUser, requireUser } from "@/server/session";
 
-export const metadata = { title: "Event" };
+export async function generateMetadata({ params }: PageProps<"/events/[id]">): Promise<Metadata> {
+  const n = Number((await params).id);
+  if (!(await getCurrentUser()) || !Number.isSafeInteger(n) || n < 1) return { title: "Event" };
+  const data = await getEvent(await db(), n);
+  return { title: data ? `${data.event.action} #${data.event.sequence}` : "Event" };
+}
 
 export default async function EventPage({ params }: PageProps<"/events/[id]">) {
   await requireUser();

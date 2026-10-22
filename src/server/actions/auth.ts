@@ -29,8 +29,8 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Sign-in:
  * - the same message for unknown email and wrong password;
  * - each failure slows the next answer (up to 2 s);
- * - after 5 failures an account is locked for 15 minutes (unknown emails are throttled the same way,
- *   so the lock message does not reveal whether an account exists);
+ * - after 5 failures an account is locked for 15 minutes; unknown emails follow exactly the same
+ *   path (login_failures), so neither the lock nor the timing reveals whether an account exists;
  * - at most 20 attempts per IP in 10 minutes.
  */
 export async function loginAction(_prev: LoginState, form: FormData): Promise<LoginState> {
@@ -56,32 +56,37 @@ export async function loginAction(_prev: LoginState, form: FormData): Promise<Lo
     )
   )[0];
 
-  if (user?.locked_until && Date.parse(user.locked_until) > Date.now()) {
-    await audit(sql, null, "auth.login_locked", { type: "user", id: user.id }, { email }, meta.ip);
+  // Accounts and unknown emails share one failure record shape and one code path, so the number of
+  // attempts before the lock, the delays and the messages are identical: nothing reveals whether
+  // an account exists. Unknown emails are tracked in login_failures.
+  const ghost = user ? null : (await sql.query<{ failures: number; locked_until: string | null }>("select failures, locked_until from login_failures where email = $1", [email]))[0];
+  const state = user ? { failures: user.failed_logins, locked_until: user.locked_until } : { failures: ghost?.failures ?? 0, locked_until: ghost?.locked_until ?? null };
+
+  if (state.locked_until && Date.parse(state.locked_until) > Date.now()) {
+    await audit(sql, null, "auth.login_locked", { type: "user", id: user?.id ?? email }, { email }, meta.ip);
     await pause(1000);
     return { error: LOCKED_MESSAGE, email };
-  }
-  if (!user) {
-    // Unknown accounts get the same lock behavior through the per-email limiter.
-    const accountLimit = await hitLimit(sql, "login_account", email);
-    if (!accountLimit.allowed) return { error: LOCKED_MESSAGE, email };
   }
 
   const valid = await verifyPassword(parsed.data.password, user?.password_hash ?? DUMMY_HASH);
   if (!user || !valid || !user.active) {
-    let locked = false;
-    if (user) {
-      const failures = user.failed_logins + 1;
-      locked = failures >= LOCKOUT.attempts;
-      await sql.query("update users set failed_logins = $2, locked_until = $3 where id = $1", [
-        user.id,
-        locked ? 0 : failures,
-        locked ? new Date(Date.now() + LOCKOUT.minutes * 60_000).toISOString() : null,
-      ]);
-      await pause(Math.min(2000, failures * 300));
-    } else {
-      await pause(600);
+    // Atomic increment: parallel guesses cannot read the same count and slip past the lock.
+    const failures = user
+      ? (await sql.query<{ n: number }>("update users set failed_logins = failed_logins + 1 where id = $1 returning failed_logins as n", [user.id]))[0]!.n
+      : (
+          await sql.query<{ n: number }>(
+            `insert into login_failures (email, failures, updated_at) values ($1, 1, now())
+             on conflict (email) do update set failures = login_failures.failures + 1, updated_at = now() returning failures as n`,
+            [email],
+          )
+        )[0]!.n;
+    const locked = failures >= LOCKOUT.attempts;
+    if (locked) {
+      const until = new Date(Date.now() + LOCKOUT.minutes * 60_000).toISOString();
+      if (user) await sql.query("update users set failed_logins = 0, locked_until = $2 where id = $1", [user.id, until]);
+      else await sql.query("update login_failures set failures = 0, locked_until = $2 where email = $1", [email, until]);
     }
+    await pause(Math.min(2000, failures * 300));
     await audit(sql, null, locked ? "auth.account_locked" : "auth.login_failed", { type: "user", id: user?.id ?? email }, { email, reason: !user ? "unknown_account" : !user.active ? "inactive" : "wrong_password" }, meta.ip);
     return { error: locked ? LOCKED_MESSAGE : "Email or password is incorrect.", email };
   }
