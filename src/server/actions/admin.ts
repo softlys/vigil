@@ -267,6 +267,20 @@ export async function resetUserPasswordAction(input: unknown) {
   });
 }
 
+/** Turns off a user's two-factor sign-in (lost phone and recovery codes); their sessions end. */
+export async function resetUserTwoFactorAction(input: unknown) {
+  return action({ role: "admin", schema: z.object({ id: z.uuid() }).strict() }, input, async ({ sql, user }, d) => {
+    if (d.id === user.id) throw new ActionError("Manage your own two-factor sign-in from your account page.");
+    const target = (await sql.query<{ email: string }>("select email from users where id = $1", [d.id]))[0];
+    if (!target) throw new ActionError("User not found.");
+    await sql.query("update users set totp_enabled = false, totp_secret = null, totp_last_step = null, recovery_codes = '{}' where id = $1", [d.id]);
+    await sql.query("delete from sessions where user_id = $1", [d.id]);
+    await audit(sql, user, "user.mfa_reset", { type: "user", id: d.id }, { email: target.email });
+    revalidatePath("/settings");
+    return undefined;
+  });
+}
+
 /**
  * Deletes a user account. Their past actions keep pointing at the id in the audit log and timelines
  * (shown as "deleted user"). You cannot delete yourself or the last active admin.

@@ -135,7 +135,7 @@ export default async function SettingsPage() {
         </p>
       </Panel>
 
-      <Panel title="Users and roles" description="Analysts investigate and propose responses; admins also approve responses, edit rules and manage settings and users. Production deployments should sit behind SSO with MFA.">
+      <Panel title="Users and roles" description="Analysts investigate and propose responses; admins also approve responses, edit rules and manage settings and users. Two-factor sign-in (authenticator app) is required in production mode; deployments should also sit behind SSO.">
         <Users users={users} currentUserId={user.id} />
       </Panel>
     </>

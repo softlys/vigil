@@ -14,7 +14,7 @@ VIGIL is a **demonstration SIEM** for one product, NEXORA. It shows how ingestio
 - **No correlation across products**, no threat intelligence, no UEBA beyond the per-actor bulk-read baseline, no machine learning.
 - **No case management integrations** (Jira, ServiceNow) and no SOAR beyond the two playbooks.
 - **No multi-tenancy.** One VIGIL serves one security team; NEXORA organizations appear as separate chains.
-- **No MFA or SSO in the app.** It must sit behind an identity-aware proxy with MFA in production.
+- **No built-in SSO.** Sign-in is a password plus a required authenticator-app code (TOTP); hardware keys (WebAuthn) are not supported. For company accounts, put VIGIL behind an identity-aware proxy.
 
 ## Known gaps
 

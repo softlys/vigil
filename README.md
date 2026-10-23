@@ -105,7 +105,7 @@ NEXORA must have `CRON_SECRET` set, with its cron calling the scheduler. Without
 | [detection-rules.md](docs/detection-rules.md) | Rule format and every built-in rule: logic, ATT&CK ids, tuning, known false positives |
 | [response.md](docs/response.md) | Playbooks, approval flow, what gets logged |
 | [drill.md](docs/drill.md) | Live drill against NEXORA, safety rules |
-| [deployment.md](docs/deployment.md) | PostgreSQL, worker, environment, MFA/SSO, headers |
+| [deployment.md](docs/deployment.md) | PostgreSQL, worker, environment, two-factor sign-in, SSO, headers |
 | [limitations.md](docs/limitations.md) | Detection coverage and limits, honest gaps |
 | [PROGRESS.md](PROGRESS.md) | Build log, verification, known issues, decisions |
 

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { createUserAction, deleteUserAction, resetUserPasswordAction, runArchiveAction, runScenarioAction, saveSettingsAction, testChannelAction, testConnectorAction, updateUserAction } from "@/server/actions/admin";
+import { createUserAction, deleteUserAction, resetUserPasswordAction, resetUserTwoFactorAction, runArchiveAction, runScenarioAction, saveSettingsAction, testChannelAction, testConnectorAction, updateUserAction } from "@/server/actions/admin";
 
 const plural = (n: number, word: string) => `${n.toLocaleString("en-US")} ${word}${n === 1 ? "" : "s"}`;
 
@@ -190,7 +190,7 @@ export function retentionError(value: string): string | null {
   return null;
 }
 
-type UserRow = { id: string; email: string; name: string; role: "analyst" | "admin"; active: boolean; last_login_at: string | null; must_change_password?: boolean };
+type UserRow = { id: string; email: string; name: string; role: "analyst" | "admin"; active: boolean; last_login_at: string | null; must_change_password?: boolean; totp_enabled?: boolean };
 
 function UserActions({ user }: { user: UserRow }) {
   const router = useRouter();
@@ -227,6 +227,27 @@ function UserActions({ user }: { user: UserRow }) {
           <Input id={`reset-${user.id}`} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={12} maxLength={200} />
         </FormField>
       </ConfirmDialog>
+      {user.totp_enabled && (
+        <ConfirmDialog
+          trigger={
+            <Button size="sm" variant="outline">
+              Reset 2FA
+            </Button>
+          }
+          title={`Reset two-factor sign-in of ${user.name}?`}
+          description="Use this when they lost their phone and recovery codes. Their sessions end now; they sign in with the password and set up two-factor sign-in again. Confirm who is asking out of band first."
+          confirmLabel="Reset 2FA"
+          onConfirm={async () => {
+            const r = await resetUserTwoFactorAction({ id: user.id });
+            if (!r.ok) {
+              toast.error(r.error);
+              return false;
+            }
+            toast.success(`Two-factor sign-in reset for ${user.name}`);
+            router.refresh();
+          }}
+        />
+      )}
       <ConfirmDialog
         trigger={
           <Button size="sm" variant="ghost" className="text-danger">
@@ -285,6 +306,7 @@ export function Users({ users, currentUserId }: { users: UserRow[]; currentUserI
                   <p className="font-medium">{u.name}</p>
                   <p className="text-xs text-text-muted">{u.email}</p>
                   {u.must_change_password && <p className="text-[11px] text-warning">Must change password at next sign-in</p>}
+                  <p className={u.totp_enabled ? "text-[11px] text-success" : "text-[11px] text-text-muted"}>{u.totp_enabled ? "Two-factor sign-in on" : "Two-factor sign-in off"}</p>
                 </td>
                 <td className="py-2 pr-3">
                   <Select value={u.role} onValueChange={(v) => update(u, { role: v as UserRow["role"] })} disabled={pending || u.id === currentUserId}>

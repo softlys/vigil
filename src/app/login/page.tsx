@@ -2,7 +2,7 @@ import { ShieldCheck } from "lucide-react";
 import { redirect } from "next/navigation";
 import { DEMO_USERS, demoPassword } from "@/lib/bootstrap";
 import { getConfig } from "@/lib/config";
-import { getCurrentUser } from "@/server/session";
+import { getCurrentUser, getPendingMfa } from "@/server/session";
 import { LoginForm } from "./login-form";
 
 export const metadata = { title: "Sign in" };
@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             <p className="text-xs text-text-muted">Security monitoring for NEXORA</p>
           </div>
         </div>
-        <LoginForm next={typeof next === "string" ? next.slice(0, 500) : undefined} />
+        <LoginForm next={typeof next === "string" ? next.slice(0, 500) : undefined} mfaPending={Boolean(await getPendingMfa())} />
         {demo && (
           <div className="space-y-1.5 rounded-lg border border-warning-border bg-warning-bg p-3 text-xs text-warning" data-testid="demo-credentials">
             <p className="font-medium">Demo mode: simulated events only</p>

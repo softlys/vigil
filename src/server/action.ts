@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import type { Sql } from "@/lib/db";
 import { db as getSql } from "./db";
-import { getCurrentUser, type CurrentUser } from "./session";
+import { getCurrentUser, mustSetUpMfa, type CurrentUser } from "./session";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
@@ -26,7 +26,7 @@ async function assertSameOrigin() {
  * Admin-only actions pass role "admin"; the check runs on the server for every call.
  */
 export async function action<S extends z.ZodType, T>(
-  options: { schema: S; role?: "analyst" | "admin" },
+  options: { schema: S; role?: "analyst" | "admin"; /** Allowed before the password change and two-factor setup are done. */ accountSetup?: boolean },
   input: unknown,
   body: (ctx: { sql: Sql; user: CurrentUser }, data: z.output<S>) => Promise<T>,
 ): Promise<ActionResult<T>> {
@@ -34,6 +34,7 @@ export async function action<S extends z.ZodType, T>(
     await assertSameOrigin();
     const user = await getCurrentUser();
     if (!user) return { ok: false, error: "Your session has ended. Sign in again." };
+    if (!options.accountSetup && (user.must_change_password || mustSetUpMfa(user))) return { ok: false, error: "Finish setting up your account first: change your password and turn on two-factor sign-in." };
     if (options.role === "admin" && user.role !== "admin") return { ok: false, error: "Only admins can do that." };
     const parsed = options.schema.safeParse(input);
     if (!parsed.success) {

@@ -13,6 +13,8 @@ export type VigilConfig = {
   /** Run the worker loop inside the web server (default with the embedded database). */
   inProcessWorker: boolean;
   database: "pglite" | "postgres";
+  /** Every user must turn on two-factor sign-in before using VIGIL (default in production mode). */
+  requireMfa: boolean;
 };
 
 const bool = (v: string | undefined, fallback: boolean) => (v === undefined || v === "" ? fallback : ["1", "true", "on", "yes"].includes(v.toLowerCase()));
@@ -52,6 +54,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): VigilConfig {
     simulator: mode === "demo" && bool(env.VIGIL_SIMULATOR, true),
     inProcessWorker: bool(env.VIGIL_INPROCESS_WORKER, database === "pglite"),
     database,
+    requireMfa: bool(env.VIGIL_REQUIRE_MFA, mode === "production"),
   };
 }
 

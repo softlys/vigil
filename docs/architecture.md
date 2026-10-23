@@ -86,4 +86,10 @@ Ticks, on-demand scenario runs and manual polls share a process lock, so nothing
   - HSTS, `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, COOP, Permissions-Policy.
 - **Secrets.** NEXORA keys, the ingest secret and notification secrets live in server environment variables only. The UI shows whether they are set, never their values. Read and respond keys are separate.
 - **Audit.** VIGIL logs its own sensitive actions: sign-ins, rule changes, response proposals and decisions, user and settings changes, simulator runs, archive jobs and connector tests.
-- **MFA.** Required for production but not implemented in VIGIL itself. Put VIGIL behind an identity-aware proxy or SSO with MFA (see [deployment.md](deployment.md)).
+- **Two-factor sign-in.** Authenticator-app codes (TOTP, RFC 6238), required for every user in production mode (`VIGIL_REQUIRE_MFA`, on by default).
+  - After the password, a pending session (its own cookie, 5 minutes) grants nothing until the code is verified.
+  - Codes are single-use: the last accepted step is stored with a conditional update.
+  - Eight one-time recovery codes are stored as SHA-256 hashes.
+  - Wrong codes count toward the account lock (5 failures, 15 minutes), so knowing the password does not allow unlimited guessing.
+  - Admins can reset a user's second factor; every step is audited.
+  - SSO is not built in; see [deployment.md](deployment.md).

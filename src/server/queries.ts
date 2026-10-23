@@ -284,7 +284,7 @@ export async function getAlert(sql: Sql, id: string) {
 
 export async function listUsers(sql: Sql) {
   return sql.query<{ id: string; email: string; name: string; role: "analyst" | "admin"; active: boolean; created_at: string; last_login_at: string | null; must_change_password: boolean }>(
-    "select id, email, name, role, active, created_at, last_login_at, must_change_password from users order by created_at",
+    "select id, email, name, role, active, created_at, last_login_at, must_change_password, totp_enabled from users order by created_at",
   );
 }
 

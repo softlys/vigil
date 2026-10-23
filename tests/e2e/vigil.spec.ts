@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { totpCode, totpStep } from "../../src/lib/totp";
 
 const PASSWORD = "vigil-demo-2026";
 
@@ -156,6 +157,44 @@ test.describe("VIGIL", () => {
     await page.getByLabel("Repeat the new password").fill("my-own-password-42");
     await page.getByRole("button", { name: "Change password" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Security Operations Center" })).toBeVisible();
+  });
+
+  test("two-factor sign-in: set up with the app, sign in with a code, turn off with a recovery code", async ({ page }) => {
+    await login(page, "analyst@vigil.example");
+    await page.goto("/account/two-factor");
+    const secret = (await page.getByTestId("totp-secret").innerText()).replace(/\s/g, "");
+    const step = totpStep(Date.now());
+    await page.getByLabel("Code from the app").fill(totpCode(secret, step));
+    await page.getByRole("button", { name: "Turn on two-factor sign-in" }).click();
+    const codes = (await page.getByTestId("recovery-codes").locator("li").allInnerTexts()).map((c) => c.trim());
+    expect(codes).toHaveLength(8);
+    await page.getByRole("button", { name: "I saved them" }).click();
+    await page.getByRole("button", { name: "Sign out" }).first().click();
+    await expect(page).toHaveURL(/\/login/);
+
+    // The password alone is not enough: the code step follows, and a wrong code is refused.
+    await page.getByLabel("Email").fill("analyst@vigil.example");
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByTestId("mfa-step")).toBeVisible();
+    expect((await page.goto("/incidents"))?.url()).toContain("/login");
+    await expect(page.getByTestId("mfa-step")).toBeVisible();
+    await page.getByLabel("Code").fill("000000");
+    await page.getByRole("button", { name: "Verify" }).click();
+    await expect(page.locator("form [role=alert]")).toContainText("not valid");
+    // The setup code's step is used up; the next step's code is within the allowed drift.
+    await page.getByLabel("Code").fill(totpCode(secret, step + 1));
+    await page.getByRole("button", { name: "Verify" }).click();
+    // Back to the page that was asked for while the code was pending.
+    await expect(page).toHaveURL(/\/incidents$/);
+
+    // Demo mode does not require it, so it can be turned off; a recovery code works as the code.
+    await page.goto("/account/two-factor");
+    await expect(page.getByTestId("mfa-on")).toContainText("8 recovery codes left");
+    await page.getByLabel("Code from the app").fill(codes[0]!);
+    await page.getByRole("button", { name: "Turn off" }).click();
+    await expect(page.getByLabel("Code from the app")).toBeVisible();
+    await expect(page.getByTestId("totp-secret")).toBeVisible();
   });
 
   test("unknown emails lock after the same number of attempts as real accounts", async ({ page }) => {

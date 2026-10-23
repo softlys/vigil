@@ -101,6 +101,20 @@ VIGIL is the security-monitoring companion to NEXORA (prompt 5), in its own repo
 - README: what VIGIL is and is not, architecture diagram, screenshots, setup, demo mode, connecting to NEXORA.
 - `docs/`: architecture, event-schema, detection-rules, response, drill, deployment, limitations.
 
+### Two-factor sign-in (2026-10-23)
+
+- **TOTP** with authenticator apps (RFC 6238; QR code and manual key), required for every user in production mode (`VIGIL_REQUIRE_MFA`, default on in production, off in demo).
+- **Sign-in in two steps.**
+  - A correct password opens a pending session (its own cookie, 5 minutes) that grants nothing until the code is verified.
+  - Codes are single-use (the last step is claimed with a conditional update).
+  - Wrong codes count toward the 5-failure account lock.
+  - The page asked for before sign-in is kept.
+- **Recovery codes.** Eight one-time codes, stored hashed. They can be regenerated with a current code.
+- **Admin reset** of a user's second factor in Settings → Users, which ends their sessions.
+- **Audit.** Every step is audited: enabled, disabled, failed codes, recovery code used, reset.
+- **Enforcement on the server.** Until the password change and 2FA setup are done, every page and action except those two is refused.
+- Migration `0005_two_factor.sql`; unit tests include the RFC 6238 vectors; an e2e test covers setup → sign-in with a code → turning it off with a recovery code.
+
 ### Hosting readiness (2026-10-23)
 
 - **Docker.**
@@ -186,7 +200,7 @@ The final verification table at the end of the session (below) supersedes these 
 
 ## Known issues
 
-- **No MFA or SSO in the app**; it must sit behind an identity-aware proxy in production.
+- **No built-in SSO**; two-factor sign-in (TOTP) is built in. For company accounts, put VIGIL behind an identity-aware proxy.
 - **Embedded database** (demo): single process, so the worker runs inside the web server. Use PostgreSQL and `npm run worker` for anything beyond a demo.
 - **Coverage depends on what NEXORA logs.**
   - API key activity is recorded mainly on failures, so VGL-010 (new IP) sees only failed or denied use.

@@ -1,4 +1,4 @@
-import { KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import { KeyRound, LogOut, ShieldCheck, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { Nav } from "@/components/shell/nav";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
                 Change password
               </Link>
             </Button>
+            <Button asChild variant="ghost" size="sm" className="-ml-2 text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground">
+              <Link href="/account/two-factor">
+                <Smartphone aria-hidden />
+                Two-factor sign-in{user.totp_enabled ? "" : " (off)"}
+              </Link>
+            </Button>
             <form action={logoutAction}>
               <Button type="submit" variant="ghost" size="sm" className="-ml-2 text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground">
                 <LogOut aria-hidden />
@@ -65,6 +71,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <div className="flex items-center">
             <Button asChild variant="ghost" size="sm">
               <Link href="/account/password">Password</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/account/two-factor">2FA</Link>
             </Button>
             <form action={logoutAction}>
               <Button type="submit" variant="ghost" size="sm">

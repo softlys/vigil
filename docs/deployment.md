@@ -30,7 +30,7 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 docker compose -f deploy/docker-compose.yml ps   # migrate: exited (0); web: healthy; worker: running
 ```
 
-Sign in with `VIGIL_ADMIN_EMAIL`. VIGIL asks for a new password at the first sign-in. Then put it behind TLS and SSO (see below), for example Caddy with `reverse_proxy 127.0.0.1:3300` behind your identity-aware proxy.
+Sign in with `VIGIL_ADMIN_EMAIL`. VIGIL first asks for a new password, then for two-factor sign-in with an authenticator app (keep the recovery codes). Then put it behind TLS, for example Caddy with `reverse_proxy 127.0.0.1:3300`, and preferably SSO (see below).
 
 CI builds this stack on every push. It checks the migration, the worker, sign-in, the rules and a backup → restore round trip.
 
@@ -99,7 +99,12 @@ Keep the respond key out of any environment that does not need it. Rotate both k
 
 - **Reverse proxy.** Next.js does not see the TCP peer address; client IPs come from `X-Forwarded-For` as far as `VIGIL_TRUSTED_PROXY_HOPS` proxies vouch for them. Exposed directly, a client can choose its own IP and bypass the per-IP sign-in limit (the per-account lockout still applies).
 
-- **MFA / SSO.** VIGIL has password sign-in only. In production, put it behind an identity-aware proxy or SSO with MFA (for example Cloudflare Access, Google IAP, Azure AD Application Proxy, or oauth2-proxy with your IdP), and restrict network access to the security team.
+- **Two-factor sign-in** is built in and required for every user in production mode.
+  - Each user sets it up at first sign-in with an authenticator app: Google or Microsoft Authenticator, 1Password, Bitwarden and the like.
+  - Recovery codes cover a lost phone; otherwise an admin resets it in **Settings → Users**.
+  - `VIGIL_REQUIRE_MFA=0` turns the requirement off, which is not recommended.
+- **SSO.** VIGIL has no built-in SSO. To use your company accounts, put it behind an identity-aware proxy: Cloudflare Access, Google IAP, Azure AD Application Proxy, or oauth2-proxy with your IdP.
+- **Network access.** Restrict access to the security team.
 - **TLS.** Serve over HTTPS only. VIGIL sends HSTS, a nonce-based CSP with `frame-ancestors 'none'`, `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` and COOP. Session cookies are `Secure` when `NODE_ENV=production`.
 - **Database.**
   - Least-privilege credentials.
