@@ -1,0 +1,88 @@
+# Self-hosted VIGIL: PostgreSQL, a one-shot migration, the web app, the worker and nightly backups.
+#
+#   cp deploy/.env.example deploy/.env   # fill it in
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#
+# Put VIGIL behind a TLS reverse proxy with SSO/MFA (see docs/deployment.md); do not expose port 3000 publicly.
+
+x-vigil: &vigil
+  build:
+    context: ..
+    args:
+      APP_RELEASE: ${APP_RELEASE:-self-hosted}
+  image: vigil:${APP_RELEASE:-latest}
+  env_file: .env
+  environment: &vigil-env
+    NODE_ENV: production
+    DATABASE_URL: postgres://vigil:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/vigil
+    VIGIL_INPROCESS_WORKER: "0"
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vigil
+      POSTGRES_USER: vigil
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - vigil-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigil -d vigil"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    <<: *vigil
+    command: ["npm", "run", "db:migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    <<: *vigil
+    restart: unless-stopped
+    ports:
+      - "${VIGIL_PORT:-3300}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *vigil
+    command: ["npm", "run", "worker"]
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Nightly compressed dump into deploy/backups, keeping the last 14. Restore: scripts/restore.sh.
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: vigil
+      PGDATABASE: vigil
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+    volumes:
+      - ./backups:/backups
+      - ../scripts/backup.sh:/backup.sh:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sh /backup.sh /backups || echo "backup failed"
+          sleep 86400
+        done
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  vigil-db:
