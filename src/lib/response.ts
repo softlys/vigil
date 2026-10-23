@@ -72,12 +72,18 @@ export async function proposeResponse(sql: Sql, input: { incidentId: string; kin
 
 type ActionRow = { id: string; incident_id: string; kind: ResponseKind; target_id: string; target_label: string | null; status: string; simulated: boolean; proposed_by: string | null };
 
-export type Executor = (input: { url: string; key: string; body: Record<string, unknown> }) => Promise<{ status: number; body: string }>;
+export type Executor = (input: { url: string; key: string; body: Record<string, unknown>; requestId?: string }) => Promise<{ status: number; body: string }>;
 
-const httpExecutor: Executor = async ({ url, key, body }) => {
+const httpExecutor: Executor = async ({ url, key, body, requestId }) => {
   const res = await fetch(url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": String(body.idempotency_key) },
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": String(body.idempotency_key),
+      // Correlation id: NEXORA records it as source.request_id on the resulting security event.
+      ...(requestId ? { "X-Request-Id": requestId } : {}),
+    },
     body: JSON.stringify({ ...body, idempotency_key: undefined }),
     signal: AbortSignal.timeout(15_000),
   });
@@ -100,7 +106,16 @@ export async function approveResponse(
   const playbook = PLAYBOOKS[action.kind];
   const config = input.config ?? getConfig();
   const requestBody = { [playbook.field]: action.target_id, reason: `${reason} (VIGIL incident ${action.incident_id})` };
-  const requestSummary = { method: "POST", url: `${config.nexora.url ?? "<NEXORA_URL>"}${playbook.path}`, body: requestBody, headers: ["Authorization: Bearer <respond key, not stored>", "Idempotency-Key"] };
+  // One id follows the action through both products: this request, NEXORA's security event for it
+  // (source.request_id) and the audit entries on both sides.
+  const correlationId = `vigil-${action.id}`;
+  const requestSummary = {
+    method: "POST",
+    url: `${config.nexora.url ?? "<NEXORA_URL>"}${playbook.path}`,
+    body: requestBody,
+    headers: ["Authorization: Bearer <respond key, not stored>", "Idempotency-Key", `X-Request-Id: ${correlationId}`],
+    correlation_id: correlationId,
+  };
 
   let status: "executed" | "failed";
   let responseSummary: Record<string, unknown>;
@@ -112,7 +127,7 @@ export async function approveResponse(
     responseSummary = { error: "NEXORA_URL and NEXORA_RESPONSE_API_KEY (scope security:respond) must be set to run response actions." };
   } else {
     try {
-      const res = await (input.executor ?? httpExecutor)({ url: `${config.nexora.url}${playbook.path}`, key: config.nexora.respondKey, body: { ...requestBody, idempotency_key: action.id } });
+      const res = await (input.executor ?? httpExecutor)({ url: `${config.nexora.url}${playbook.path}`, key: config.nexora.respondKey, body: { ...requestBody, idempotency_key: action.id }, requestId: correlationId });
       status = res.status >= 200 && res.status < 300 ? "executed" : "failed";
       responseSummary = { status_code: res.status, body: res.body };
     } catch (error) {
@@ -138,7 +153,7 @@ export async function approveResponse(
     ]);
     await q.query("update incidents set updated_at = now() where id = $1", [action.incident_id]);
   });
-  await audit(sql, input.admin, `response.${status}`, { type: "response_action", id: action.id }, { kind: action.kind, target_id: action.target_id, reason, simulated: action.simulated, response: responseSummary });
+  await audit(sql, input.admin, `response.${status}`, { type: "response_action", id: action.id }, { kind: action.kind, target_id: action.target_id, reason, simulated: action.simulated, correlation_id: correlationId, response: responseSummary });
   return { status, simulated: action.simulated };
 }
 

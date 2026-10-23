@@ -101,6 +101,22 @@ VIGIL is the security-monitoring companion to NEXORA (prompt 5), in its own repo
 - README: what VIGIL is and is not, architecture diagram, screenshots, setup, demo mode, connecting to NEXORA.
 - `docs/`: architecture, event-schema, detection-rules, response, drill, deployment, limitations.
 
+### Hosting readiness (2026-10-23)
+
+- **Docker.**
+  - `Dockerfile`: node 24-alpine, non-root, `HEALTHCHECK`, `APP_RELEASE`.
+  - `deploy/docker-compose.yml` runs PostgreSQL 17, a one-shot migration, the web app, the worker (separate process) and nightly backups.
+  - `GET /api/health` returns the release.
+- **Backups.** `scripts/backup.sh` / `restore.sh` (`pg_dump -Fc`, keeps `BACKUP_KEEP`).
+- **Notification retries (VG-005).** A failed email, Slack or webhook notification is retried by the worker after 1, 4, 16 and 64 minutes, up to 5 attempts (migration `0004_notification_retries.sql`).
+- **Correlation id (INT-003).** Every response action sends `X-Request-Id: vigil-<action id>` to NEXORA and stores it in the action's request summary and the audit log, so both sides' records can be matched.
+- **CI.** A `compose` job builds and starts the stack and checks:
+  - the migration succeeded and the worker is running;
+  - sign-in works and pages are protected;
+  - no demo password, 15 rules, and the admin must change the password;
+  - a backup restored into a fresh database has the same row counts.
+- **Docs.** `docs/deployment.md`: Docker Compose, backups and restore, upgrades and rollback.
+
 ### Full testing pass (2026-10-22)
 
 Fixed, with tests:
@@ -177,7 +193,7 @@ The final verification table at the end of the session (below) supersedes these 
   - Successful sign-ins exist only in NEXORA's Supabase mode.
   - The drill cannot reproduce sign-in failures or IDOR in NEXORA demo mode.
 - **Heartbeat gaps after downtime** of NEXORA or VIGIL produce integrity alerts. This is by design. The simulator catches up after demo downtime of up to 7 days.
-- **Notifications** have no retry queue.
+- **Notifications** are retried up to 5 times over about 85 minutes; after that they stay failed in the log.
 - **Scale**: exercised with thousands of events per day; see `docs/limitations.md`.
 - **`npm ci`** prints install-script approval warnings (esbuild, unrs-resolver) with npm 11; everything works.
 

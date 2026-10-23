@@ -8,7 +8,7 @@ import type { Sql } from "@/lib/db";
 import { backoffMs, connectorHealth, pollNexora } from "@/lib/connector";
 import { getConfig } from "@/lib/config";
 import { ingestEvents } from "@/lib/ingest";
-import { notifyNewAlerts } from "@/lib/notify";
+import { MAX_NOTIFY_ATTEMPTS, notifyNewAlerts, retryDelayMs, retryFailedNotifications } from "@/lib/notify";
 import { approveResponse, proposeResponse, rejectResponse, responseCandidates, ResponseError } from "@/lib/response";
 import { backfill } from "@/simulator/run";
 import { bootstrap, exportHistory, rng, scenario, SCENARIOS, seal } from "@/simulator/generator";
@@ -163,11 +163,12 @@ describe("response actions", () => {
   it("real incidents call the security-actions API with the respond key and log the result", async () => {
     const id = await incident(false);
     const actionId = await proposeResponse(sql, { incidentId: id, kind: "disable_user", targetId: USER, targetLabel: "Daniel", actor: analyst });
-    const seen: Array<{ url: string; key: string; body: Record<string, unknown> }> = [];
+    const seen: Array<{ url: string; key: string; body: Record<string, unknown>; requestId?: string }> = [];
     const cfg = getConfig({ NEXORA_URL: "https://nexora.example", NEXORA_SECURITY_API_KEY: "read", NEXORA_RESPONSE_API_KEY: "respond" } as unknown as NodeJS.ProcessEnv);
     const r = await approveResponse(sql, { actionId, reason: "Confirmed account takeover", admin, config: cfg, executor: async (x) => (seen.push(x), { status: 200, body: '{"data":{"changed":true}}' }) });
     expect(r.status).toBe("executed");
     expect(seen[0]).toMatchObject({ url: "https://nexora.example/api/v1/security-actions/disable-user", key: "respond", body: { user_id: USER } });
+    expect(seen[0]!.requestId).toBe(`vigil-${actionId}`);
     const stored = (await sql.query<{ request_summary: Record<string, unknown> }>("select request_summary from response_actions where id = $1", [actionId]))[0]!;
     expect(JSON.stringify(stored.request_summary)).not.toContain("respond\"");
   });
@@ -249,5 +250,36 @@ describe("notifications", () => {
     expect(await notifyNewAlerts(sql, { env, fetchImpl })).toBe(1);
     expect(posts).toEqual(["https://hooks.slack.example/T/B/X"]);
     expect(await notifyNewAlerts(sql, { env, fetchImpl })).toBe(0);
+  });
+
+  it("retries a failed delivery with backoff and gives up after the last attempt", async () => {
+    await raiseAlert(sql, { rule: RULES["VGL-006"]!, ruleVersion: 1, key: "r", entity: { field: "actor.id", value: "r" }, eventIds: [], at: T0.toISOString(), summary: "s", simulated: false, scope: "nexora:o" });
+    const env = { VIGIL_SLACK_WEBHOOK_URL: "https://hooks.slack.example/T/B/X" } as unknown as NodeJS.ProcessEnv;
+    const down = (async () => new Response("unavailable", { status: 503 })) as unknown as typeof fetch;
+    const up = (async () => new Response("ok")) as unknown as typeof fetch;
+    expect(await notifyNewAlerts(sql, { env, fetchImpl: down })).toBe(0);
+    const row = async () => (await sql.query<{ status: string; attempts: number; next_attempt_at: string | null }>("select status, attempts, next_attempt_at from notifications order by id desc limit 1"))[0]!;
+    expect(await row()).toMatchObject({ status: "failed", attempts: 1 });
+
+    // Not due yet: nothing happens.
+    expect(await retryFailedNotifications(sql, new Date(), { env, fetchImpl: up })).toBe(0);
+    // After the backoff, a retry succeeds.
+    expect(await retryFailedNotifications(sql, new Date(Date.now() + retryDelayMs(1) + 1000), { env, fetchImpl: up })).toBe(1);
+    expect(await row()).toMatchObject({ status: "sent", attempts: 2, next_attempt_at: null });
+  });
+
+  it("stops retrying after the maximum number of attempts", async () => {
+    await raiseAlert(sql, { rule: RULES["VGL-006"]!, ruleVersion: 1, key: "g", entity: { field: "actor.id", value: "g" }, eventIds: [], at: T0.toISOString(), summary: "s", simulated: false, scope: "nexora:o" });
+    const env = { VIGIL_SLACK_WEBHOOK_URL: "https://hooks.slack.example/T/B/X" } as unknown as NodeJS.ProcessEnv;
+    const down = (async () => new Response("unavailable", { status: 503 })) as unknown as typeof fetch;
+    await notifyNewAlerts(sql, { env, fetchImpl: down });
+    let t = Date.now();
+    for (let attempt = 1; attempt < MAX_NOTIFY_ATTEMPTS; attempt++) {
+      t += retryDelayMs(attempt) + 1000;
+      await retryFailedNotifications(sql, new Date(t), { env, fetchImpl: down });
+    }
+    const last = (await sql.query<{ status: string; attempts: number; next_attempt_at: string | null; detail: string }>("select * from notifications order by id desc limit 1"))[0]!;
+    expect(last).toMatchObject({ status: "failed", attempts: MAX_NOTIFY_ATTEMPTS, next_attempt_at: null });
+    expect(last.detail).toMatch(/Gave up after 5 attempts/);
   });
 });

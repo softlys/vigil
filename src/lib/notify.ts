@@ -85,9 +85,57 @@ export async function notifyNewAlerts(sql: Sql, options: { env?: NodeJS.ProcessE
         await sql.query("insert into notifications (alert_id, channel, status) values ($1, $2, 'sent')", [a.id, c.key]);
         sent += 1;
       } catch (error) {
-        await sql.query("insert into notifications (alert_id, channel, status, detail) values ($1, $2, 'failed', $3)", [a.id, c.key, String(error instanceof Error ? error.message : error).slice(0, 500)]);
+        await sql.query("insert into notifications (alert_id, channel, status, detail, attempts, next_attempt_at) values ($1, $2, 'failed', $3, 1, $4)", [
+          a.id,
+          c.key,
+          String(error instanceof Error ? error.message : error).slice(0, 500),
+          new Date(Date.now() + retryDelayMs(1)).toISOString(),
+        ]);
       }
     }
   }
   return sent;
+}
+
+/** Attempts per notification before giving up, and the wait before attempt n+1 (1, 4, 16, 64 minutes). */
+export const MAX_NOTIFY_ATTEMPTS = 5;
+export function retryDelayMs(attempt: number): number {
+  return 60_000 * 4 ** (attempt - 1);
+}
+
+/**
+ * Retries failed notifications whose backoff has passed, up to MAX_NOTIFY_ATTEMPTS. A channel that
+ * was removed from the configuration since is not retried. Returns how many were delivered.
+ */
+export async function retryFailedNotifications(sql: Sql, now = new Date(), options: { env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch } = {}): Promise<number> {
+  const env = options.env ?? process.env;
+  const due = await sql.query<{ id: number; alert_id: string; channel: ChannelKey; attempts: number }>(
+    "select id, alert_id, channel, attempts from notifications where status = 'failed' and next_attempt_at is not null and next_attempt_at <= $1 order by next_attempt_at limit 50",
+    [now.toISOString()],
+  );
+  const active = new Set(channels(env).filter((c) => c.configured).map((c) => c.key));
+  let delivered = 0;
+  for (const n of due) {
+    const alert = (await sql.query<AlertRow>("select * from alerts where id = $1", [n.alert_id]))[0];
+    if (!alert || !active.has(n.channel)) {
+      await sql.query("update notifications set next_attempt_at = null, detail = coalesce(detail, '') || ' (not retried: channel or alert gone)' where id = $1", [n.id]);
+      continue;
+    }
+    const attempt = n.attempts + 1;
+    try {
+      await deliver(n.channel, messageFor(alert, env.VIGIL_PUBLIC_URL ?? null), env, options.fetchImpl);
+      await sql.query("update notifications set status = 'sent', attempts = $2, next_attempt_at = null, detail = null, at = $3 where id = $1", [n.id, attempt, now.toISOString()]);
+      delivered += 1;
+    } catch (error) {
+      const giveUp = attempt >= MAX_NOTIFY_ATTEMPTS;
+      await sql.query("update notifications set attempts = $2, next_attempt_at = $3, detail = $4, at = $5 where id = $1", [
+        n.id,
+        attempt,
+        giveUp ? null : new Date(now.getTime() + retryDelayMs(attempt)).toISOString(),
+        `${giveUp ? "Gave up after " + attempt + " attempts: " : ""}${String(error instanceof Error ? error.message : error).slice(0, 450)}`,
+        now.toISOString(),
+      ]);
+    }
+  }
+  return delivered;
 }

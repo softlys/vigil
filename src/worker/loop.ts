@@ -15,7 +15,7 @@ import { getConfig } from "@/lib/config";
 import { pollNexora } from "@/lib/connector";
 import type { Sql } from "@/lib/db";
 import { checkHeartbeats } from "@/lib/ingest";
-import { notifyNewAlerts } from "@/lib/notify";
+import { notifyNewAlerts, retryFailedNotifications } from "@/lib/notify";
 import { archiveOldEvents } from "@/lib/retention";
 import { backfill, tick as simulatorTick } from "@/simulator/run";
 
@@ -81,6 +81,7 @@ async function tickOnce(sql: Sql, now: Date): Promise<TickResult> {
   });
   await step("notifications", async () => {
     r.notified = await notifyNewAlerts(sql);
+    r.notified += await retryFailedNotifications(sql, now);
   });
   await step("retention", async () => {
     r.archived = (await archiveOldEvents(sql, now)).archived;
