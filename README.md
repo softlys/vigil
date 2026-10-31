@@ -1,5 +1,7 @@
 # VIGIL
 
+> **Demo project from my portfolio.** Built and maintained by [psmoolyakov](https://github.com/softlys). All company and person data in it is fictional.
+
 **Security monitoring for NEXORA.** VIGIL ingests the security log of the [NEXORA](https://github.com/softlys/nexora) B2B platform, verifies its hash chain, detects attacks with versioned rules, groups alerts into incidents, and lets an admin respond (revoke an API key, disable a user) through NEXORA's security API. Nothing destructive happens without a human approving it.
 
 > **What VIGIL is not.** VIGIL is a demonstration SIEM built for one product. It is not a replacement for Splunk, Elastic Security or Microsoft Sentinel:

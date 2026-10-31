@@ -53,3 +53,8 @@ next-env.d.ts
 # deployment
 /deploy/.env
 /deploy/backups/
+
+# local tool files
+AGENTS.md
+CLAUDE.md
+.claude/
